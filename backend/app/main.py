@@ -7,8 +7,10 @@ from typing import List
 from fastapi import FastAPI
 
 from app.catalog.catalog_service import get_catalog
+from app.models.decision import Decision
 from app.models.decision_request import DecisionRequest
 from app.models.product import Product
+from app.upsell.decision_engine import make_decision
 
 app = FastAPI(title="Agent Gatekeeper")
 
@@ -30,20 +32,13 @@ def catalog():
     return get_catalog()
 
 
-@app.post("/decide")
+@app.post("/decide", response_model=Decision)
 def decide(request: DecisionRequest):
-    """Stub for the decision endpoint.
+    """Run a transaction through the full decision pipeline.
 
-    Accepts a mandate plus a proposed transaction and only acknowledges
-    receipt - it does not inspect budget, category, or expiry, and it does
-    not call the validator. The real decision engine, which runs the
-    deterministic validator first and only reaches an LLM after that check
-    passes, is built in the next step. This stub exists so the buyer agent
-    simulator has a real endpoint to send scenarios to in the meantime.
+    Always validates against the mandate's rules first (Step 3); only
+    reaches the LLM upsell engine (Step 6) if that validation approves. A
+    declined mandate gets a decision back with no upsell and no LLM call
+    ever made.
     """
-    return {
-        "received": True,
-        "buyer_id": request.mandate.buyer_id,
-        "sku": request.transaction.sku,
-        "message": "Decision engine not implemented yet - this is a stub.",
-    }
+    return make_decision(request.mandate, request.transaction)

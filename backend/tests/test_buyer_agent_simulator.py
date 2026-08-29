@@ -1,4 +1,4 @@
-# Tests for the buyer agent simulator and the /decide stub it talks to.
+# Tests for the buyer agent simulator and the /decide endpoint it talks to.
 #
 # The scenario-building logic is checked two ways: structurally (each
 # scenario's mandate/transaction actually parses as Mandate/
@@ -6,6 +6,12 @@
 # real validator from Step 3 produces the outcome the scenario claims to
 # demonstrate). That second check is what actually proves the four
 # scenarios exercise the rules they're supposed to.
+#
+# The /decide tests here monkeypatch the LLM call so this file never makes
+# a real network request - the upsell engine's own behavior is covered in
+# test_upsell_engine.py and test_decision_engine.py.
+
+import json
 
 from fastapi.testclient import TestClient
 
@@ -14,6 +20,7 @@ from app.main import app
 from app.models.mandate import Mandate
 from app.models.transaction import ProposedTransaction
 from app.models.validation_result import ValidationRule
+from app.upsell import upsell_engine
 from app.validator.mandate_validator import validate_mandate
 from scripts.buyer_agent_simulator import build_scenarios, find_product
 
@@ -85,7 +92,17 @@ def test_adversarial_upsell_attempt_declines_on_category():
     assert result.violated_rule == ValidationRule.CATEGORY_NOT_ALLOWED
 
 
-def test_decide_stub_acknowledges_a_valid_payload():
+def test_decide_endpoint_returns_a_decision_for_a_valid_payload(monkeypatch):
+    # Not expected to be called for this particular scenario (its category
+    # allowlist and budget headroom leave no candidates), but patched
+    # regardless so this test can never make a real network call.
+    def fake_complete_json(system_prompt, user_prompt):
+        return json.dumps(
+            {"upsell_sku": None, "justification": "No candidate matches the buyer's stated intent."}
+        )
+
+    monkeypatch.setattr(upsell_engine, "complete_json", fake_complete_json)
+
     scenario = scenario_by_name(build_scenarios(catalog_as_dicts()), "clean_purchase")
     response = client.post(
         "/decide",
@@ -93,11 +110,9 @@ def test_decide_stub_acknowledges_a_valid_payload():
     )
     assert response.status_code == 200
     body = response.json()
-    assert body["received"] is True
-    assert body["buyer_id"] == scenario["mandate"]["buyer_id"]
-    assert "not implemented" in body["message"].lower()
+    assert body["validation"]["approved"] is True
 
 
-def test_decide_stub_rejects_malformed_payload():
+def test_decide_endpoint_rejects_malformed_payload():
     response = client.post("/decide", json={"mandate": {}, "transaction": {}})
     assert response.status_code == 422
