@@ -17,7 +17,9 @@ It does three things:
 
 ## Status
 
-Repo scaffold only. No functional modules are wired up yet.
+Mandate schema, deterministic validator, catalog endpoint, and a buyer
+agent simulator are in place. The decision endpoint (`/decide`) is still a
+stub — it acknowledges requests but doesn't call the validator yet.
 
 ## Project layout
 
@@ -33,6 +35,8 @@ backend/
     razorpay_client/     Razorpay test-mode checkout integration
   data/
     catalog.json         Product catalog used as the upsell source of truth
+  scripts/
+    buyer_agent_simulator.py   Queries the catalog and sends demo scenarios to /decide
   tests/
 frontend/                Trust panel + Growth panel UI
 ```
@@ -45,3 +49,16 @@ pip install -r requirements.txt
 cp ../.env.example ../.env   # fill in real values
 uvicorn app.main:app --reload
 ```
+
+## Running the buyer agent simulator
+
+With the backend running, in a separate terminal:
+
+```bash
+cd backend
+python scripts/buyer_agent_simulator.py
+```
+
+This queries `/catalog`, builds four demo scenarios (clean purchase,
+upsell-eligible purchase, mandate violation, adversarial upsell attempt),
+and posts each one to `/decide`.
