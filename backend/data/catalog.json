@@ -1,1 +1,34 @@
-[]
+[
+  {
+    "sku": "SHOE-001",
+    "name": "Trailrunner Pro Running Shoes",
+    "price": 2499.0,
+    "category": "footwear",
+    "stock": 40,
+    "upsell_eligible": false
+  },
+  {
+    "sku": "SOCK-010",
+    "name": "Cushioned Running Socks (3-Pack)",
+    "price": 399.0,
+    "category": "footwear",
+    "stock": 120,
+    "upsell_eligible": true
+  },
+  {
+    "sku": "INSOLE-020",
+    "name": "Gel Comfort Insoles",
+    "price": 599.0,
+    "category": "footwear",
+    "stock": 75,
+    "upsell_eligible": true
+  },
+  {
+    "sku": "BOTTLE-030",
+    "name": "Insulated Water Bottle 750ml",
+    "price": 799.0,
+    "category": "accessories",
+    "stock": 60,
+    "upsell_eligible": true
+  }
+]
