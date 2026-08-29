@@ -1,0 +1,25 @@
+# Environment / secrets
+.env
+*.env.local
+
+# Local working notes (not part of the public deliverable)
+CLAUDE.md
+
+# Python
+__pycache__/
+*.pyc
+.venv/
+venv/
+*.egg-info/
+.pytest_cache/
+
+# Node (frontend, if it ends up using it)
+node_modules/
+dist/
+build/
+
+# OS / editor
+.DS_Store
+Thumbs.db
+.vscode/
+.idea/
