@@ -10,6 +10,7 @@
 # backend/), then run this script from backend/:
 #     python scripts/buyer_agent_simulator.py
 
+import json
 import os
 from datetime import datetime, timedelta, timezone
 from typing import Any, Dict, List
@@ -137,7 +138,10 @@ def run_scenario(client: httpx.Client, scenario: Dict[str, Any]) -> None:
     print(f"\n=== {scenario['name']} ===")
     print(scenario["description"])
     print(f"POST /decide -> {response.status_code}")
-    print(response.json())
+    # ensure_ascii=True escapes non-ASCII characters (e.g. a smart hyphen
+    # in an LLM-generated justification) as \uXXXX, since Windows consoles
+    # commonly default to a codepage (cp1252) that can't print them raw.
+    print(json.dumps(response.json(), ensure_ascii=True))
 
 
 def main() -> None:
