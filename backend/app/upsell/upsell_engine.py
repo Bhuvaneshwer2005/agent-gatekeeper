@@ -147,7 +147,21 @@ def propose_upsell(
     raw_responses: List[str] = []
 
     for _ in range(MAX_ATTEMPTS):
-        raw = complete_json(SYSTEM_PROMPT, user_prompt)
+        try:
+            raw = complete_json(SYSTEM_PROMPT, user_prompt)
+        except Exception as exc:
+            # The API call itself can fail outright, not just return
+            # malformed JSON - e.g. Groq's JSON mode rejects the response
+            # with a 400 when the model answers in plain prose instead of
+            # emitting JSON, which is exactly what happens when a model
+            # correctly refuses a prompt-injection attempt in the intent
+            # field (see test_adversarial_scenarios.py). That refusal must
+            # not crash the request any more than malformed JSON does -
+            # it's handled the same way, retried, with the failure kept
+            # visible in the audit trail rather than silently dropped.
+            raw_responses.append(f"<LLM call failed: {exc}>")
+            continue
+
         raw_responses.append(raw)
 
         try:

@@ -41,7 +41,7 @@ def run_through_validator(scenario):
     return validate_mandate(mandate, transaction)
 
 
-def test_build_scenarios_returns_the_four_expected_names():
+def test_build_scenarios_returns_the_five_expected_names():
     scenarios = build_scenarios(catalog_as_dicts())
     names = [s["name"] for s in scenarios]
     assert names == [
@@ -49,6 +49,7 @@ def test_build_scenarios_returns_the_four_expected_names():
         "upsell_eligible_purchase",
         "mandate_violation",
         "adversarial_upsell_attempt",
+        "social_engineering_attempt",
     ]
 
 

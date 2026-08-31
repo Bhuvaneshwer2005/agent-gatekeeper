@@ -129,6 +129,36 @@ def test_propose_upsell_retries_once_on_malformed_json(monkeypatch):
     assert proposal.upsell_sku is None
 
 
+def test_propose_upsell_retries_when_the_llm_call_itself_raises(monkeypatch):
+    # Regression test: Groq's JSON mode raises an API error (not just
+    # malformed JSON) when the model answers in plain prose instead of
+    # emitting JSON - which happens for real when a model refuses a
+    # prompt-injection attempt. Discovered live while running the Step-12
+    # adversarial scenario against the real API.
+    attempts = []
+
+    def fake_complete_json(system_prompt, user_prompt):
+        attempts.append(1)
+        if len(attempts) == 1:
+            raise RuntimeError("400 json_validate_failed: I'm sorry, but I can't comply with that.")
+        return json.dumps(
+            {
+                "upsell_sku": None,
+                "justification": "Nothing here clearly matches the buyer's running shoe intent.",
+            }
+        )
+
+    monkeypatch.setattr(upsell_engine, "complete_json", fake_complete_json)
+
+    proposal, raw = upsell_engine.propose_upsell(
+        make_mandate(), make_transaction(), CATALOG
+    )
+
+    assert len(raw) == 2
+    assert "LLM call failed" in raw[0]
+    assert proposal.upsell_sku is None
+
+
 def test_propose_upsell_rejects_a_hallucinated_sku_and_falls_back_to_no_upsell(
     monkeypatch,
 ):
