@@ -38,17 +38,36 @@ propose at most one upsell from the real catalog, or none at all.
 
 ## Architecture
 
-```mermaid
-flowchart TD
-    Agent["Buyer agent<br/>mandate + transaction"] -->|POST /decide| API["FastAPI /decide"]
-    API --> Validator{"Deterministic validator<br/>expiry &#8594; category &#8594; budget"}
-    Validator -->|declined| Skip["No LLM call<br/>No Razorpay call"]
-    Validator -->|approved| Upsell["Upsell engine (LLM)<br/>candidate pre-filter &#8594; propose &#8594; verify"]
-    Upsell --> Razorpay["Razorpay test-mode order<br/>auto-capture"]
-    Skip --> Log[("SQLite audit log<br/>one row per decision")]
-    Razorpay --> Log
-    Log --> Trust["Trust panel<br/>Streamlit"]
-    Log --> Growth["Growth panel<br/>Streamlit"]
+```text
+Buyer Agent
+  |  POST /decide  (mandate + transaction)
+  v
+FastAPI /decide
+  |
+  v
+Deterministic Validator
+  expiry -> category -> budget
+  |
+  +-- declined ---------------------------------+
+  |   no LLM call, no Razorpay call              |
+  |                                              |
+  +-- approved                                   |
+       |                                         |
+       v                                         |
+      Upsell Engine (LLM)                        |
+      candidate pre-filter -> propose -> verify   |
+       |                                         |
+       v                                         |
+      Razorpay test-mode order (auto-capture)    |
+       |                                         |
+       v                                         v
+      --------------- SQLite audit log ----------------
+                  one row per decision
+                          |
+              +-----------+-----------+
+              v                       v
+        Trust panel              Growth panel
+        (Streamlit)               (Streamlit)
 ```
 
 The one architectural decision everything else follows from: **a declined
