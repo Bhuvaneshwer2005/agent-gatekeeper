@@ -55,8 +55,8 @@ def validate_mandate(
             approved=False,
             violated_rule=ValidationRule.BUDGET_EXCEEDED,
             detail=(
-                f"Transaction amount {transaction.amount} exceeds mandate "
-                f"budget of {mandate.budget_max}."
+                f"Transaction amount ₹{transaction.amount:,.2f} exceeds "
+                f"mandate budget of ₹{mandate.budget_max:,.2f}."
             ),
         )
 
