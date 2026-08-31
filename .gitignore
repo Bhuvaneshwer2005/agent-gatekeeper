@@ -2,8 +2,9 @@
 .env
 *.env.local
 
-# Local working notes (not part of the public deliverable)
+# Local working notes / tooling config (not part of the public deliverable)
 CLAUDE.md
+.claude/
 
 # Python
 __pycache__/
