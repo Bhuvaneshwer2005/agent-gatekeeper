@@ -13,6 +13,9 @@ venv/
 *.egg-info/
 .pytest_cache/
 
+# Generated at runtime, not source data
+backend/data/audit_log.db
+
 # Node (frontend, if it ends up using it)
 node_modules/
 dist/
