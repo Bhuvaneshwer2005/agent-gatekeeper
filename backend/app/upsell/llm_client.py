@@ -41,7 +41,12 @@ def complete_json(system_prompt: str, user_prompt: str) -> str:
     just this one, so there is no parameter to override it.
     """
     client = _get_client()
-    model = os.environ.get("GROQ_MODEL", DEFAULT_MODEL)
+    # `or DEFAULT_MODEL`, not `.get(..., DEFAULT_MODEL)`: .env.example ships
+    # with GROQ_MODEL= (present but empty), so python-dotenv sets it to ""
+    # rather than leaving it unset - a plain .get() with a default only
+    # falls back when the key is *missing*, not when it's blank, so the
+    # empty string was being sent to Groq as a literal model name.
+    model = os.environ.get("GROQ_MODEL") or DEFAULT_MODEL
     response = client.chat.completions.create(
         model=model,
         temperature=0,
