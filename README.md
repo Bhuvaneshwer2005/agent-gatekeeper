@@ -128,9 +128,15 @@ frontend/
 ```bash
 cd backend
 pip install -r requirements.txt
-cp ../.env.example ../.env   # add a free GROQ_API_KEY from console.groq.com
-uvicorn app.main:app --reload
+cp ../.env.example .env   # Windows cmd.exe: copy ..\.env.example .env
+# add a free GROQ_API_KEY from console.groq.com to the .env you just created
+python -m uvicorn app.main:app --reload
 ```
+
+`python -m uvicorn` rather than bare `uvicorn` — pip installs the
+`uvicorn` command into Python's `Scripts` folder, which isn't always on
+`PATH` (especially on a fresh Windows setup). Running it as a module
+sidesteps that entirely.
 
 Razorpay test-mode keys (`RAZORPAY_KEY_ID` / `RAZORPAY_KEY_SECRET`) are
 optional — without them, an approved decision still works end to end, it
@@ -142,7 +148,7 @@ creating a real test-mode order.
 ```bash
 cd frontend
 pip install -r requirements.txt
-streamlit run dashboard.py
+python -m streamlit run dashboard.py
 ```
 
 **Try it end to end:**
@@ -223,3 +229,15 @@ Genuine issues hit while building this, not a hypothetical list:
   rotated as a precaution. Since then, secret presence is checked with
   boolean match commands only (`grep -q`), never anything that could echo
   matched content.
+- **The setup instructions didn't actually work on a fresh Windows
+  machine.** Found by someone following this exact README on a clean
+  download, not by the person who wrote it. Bare `uvicorn app.main:app`
+  and `streamlit run dashboard.py`, as originally documented, both raise
+  `'X' is not recognized as an internal or external command` on a stock
+  `cmd.exe` — `pip install` puts those commands in Python's `Scripts`
+  folder, which isn't reliably on `PATH`. Fixed by documenting
+  `python -m uvicorn` / `python -m streamlit run` instead, which resolve
+  the installed package directly regardless of `PATH`. Also caught in the
+  same pass: the `.env` copy step pointed at the project root while every
+  other instruction (and every test throughout the build) assumed
+  `backend/.env` — fixed to copy directly into `backend/`.
