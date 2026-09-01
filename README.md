@@ -123,10 +123,17 @@ frontend/
 
 ## Setup
 
+Use a virtual environment for each of `backend/` and `frontend/` — both
+have their own `requirements.txt`, and installing globally means `pip`
+won't upgrade a package you already happen to have installed from an
+unrelated project, even if this repo needs a newer version.
+
 **Backend:**
 
 ```bash
 cd backend
+python -m venv .venv
+.venv\Scripts\activate        # macOS/Linux: source .venv/bin/activate
 pip install -r requirements.txt
 cp ../.env.example .env   # Windows cmd.exe: copy ..\.env.example .env
 # add a free GROQ_API_KEY from console.groq.com to the .env you just created
@@ -147,6 +154,8 @@ creating a real test-mode order.
 
 ```bash
 cd frontend
+python -m venv .venv
+.venv\Scripts\activate        # macOS/Linux: source .venv/bin/activate
 pip install -r requirements.txt
 python -m streamlit run dashboard.py
 ```
@@ -241,3 +250,15 @@ Genuine issues hit while building this, not a hypothetical list:
   same pass: the `.env` copy step pointed at the project root while every
   other instruction (and every test throughout the build) assumed
   `backend/.env` — fixed to copy directly into `backend/`.
+- **The Trust panel crashed with `'str' object cannot be interpreted as
+  an integer`** on a machine that already had an older Streamlit
+  installed globally from an unrelated project. `requirements.txt`
+  listed `streamlit` with no version pin, and without a virtual
+  environment, `pip install` doesn't upgrade a package that's already
+  present — so `st.dataframe(..., width="stretch")`, valid only on newer
+  Streamlit releases, got a version where `width` still meant
+  pixels-only. Fixed by reverting to the older, more broadly-supported
+  `use_container_width=True`, adding a `streamlit>=1.30` floor as a
+  backstop, and adding virtual-environment creation to the setup steps
+  above so a stale global install can't shadow this project's
+  dependencies again.

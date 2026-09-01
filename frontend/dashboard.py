@@ -91,7 +91,15 @@ with trust_tab:
         display_df = display_df.fillna("-")
 
         styled = display_df.style.apply(highlight_by_status, axis=1)
-        st.dataframe(styled, width="stretch", hide_index=True)
+        # use_container_width, not width="stretch": the latter is only
+        # valid on newer Streamlit releases (width used to be pixels-only),
+        # and pip won't upgrade an already-installed older Streamlit just
+        # because requirements.txt lists it unpinned - found on a machine
+        # with a pre-existing global Streamlit 1.40.1, where the string
+        # crashed with "'str' object cannot be interpreted as an integer".
+        # use_container_width is older and deprecated, but still works on
+        # every version this project has actually been tested against.
+        st.dataframe(styled, use_container_width=True, hide_index=True)
 
         st.subheader("Inspect a decision")
         selected_id = st.selectbox(
@@ -161,8 +169,30 @@ with growth_tab:
                 ),
             )
 
-            chart_df = pd.DataFrame(
-                {"AOV (INR)": [metrics["baseline_aov"], metrics["projected_aov"]]},
-                index=["Actual", "Projected w/ upsells"],
-            )
-            st.bar_chart(chart_df)
+            # A hand-rolled HTML bar instead of st.bar_chart(): the latter
+            # imports altair internally, and an older Streamlit paired with
+            # a newer Python can hit a real incompatibility there (altair's
+            # schema uses TypedDict(closed=True), a typing feature not every
+            # Python/typing_extensions combo supports) - found live on a
+            # machine with Streamlit 1.40.1 on Python 3.14. Plain HTML has
+            # no such dependency and works on any Streamlit version.
+            max_aov = max(metrics["baseline_aov"], metrics["projected_aov"]) or 1
+            for label, value in (
+                ("Actual", metrics["baseline_aov"]),
+                ("Projected w/ upsells", metrics["projected_aov"]),
+            ):
+                bar_pct = value / max_aov * 100
+                st.markdown(
+                    f"""
+                    <div style="margin-bottom: 0.75rem;">
+                      <div style="font-size: 0.85rem; margin-bottom: 0.25rem;">{label}</div>
+                      <div style="background: rgba(128,128,128,0.25); border-radius: 4px; overflow: hidden;">
+                        <div style="background: #6c8ef5; width: {bar_pct:.1f}%; padding: 0.4rem 0.6rem;
+                                    color: white; font-size: 0.85rem; white-space: nowrap;">
+                          ₹{value:,.2f}
+                        </div>
+                      </div>
+                    </div>
+                    """,
+                    unsafe_allow_html=True,
+                )
