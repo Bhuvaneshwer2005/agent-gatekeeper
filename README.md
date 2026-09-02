@@ -31,10 +31,12 @@ propose at most one upsell from the real catalog, or none at all.
    pre-filtered for budget and category, so the model is never in a
    position to get the numbers wrong.
 3. **Logs every decision** — approved, upsold, or refused — to an audit
-   trail as a single structured row, and surfaces two live dashboards: a
-   **Trust panel** (every decision, refusals visually distinct, raw LLM
-   output visible even when rejected) and a **Growth panel** (upsell
-   acceptance rate, AOV lift).
+   trail as a single structured row, and surfaces three live dashboard
+   tabs: a **Trust panel** (every decision, refusals visually distinct,
+   raw LLM output visible even when rejected), a **Growth panel** (upsell
+   acceptance rate, AOV lift), and a **Live demo** tab where any of the
+   five scenarios can be run from the browser, showing the buyer agent's
+   request beside the gate's step-by-step decision.
 
 ## Architecture
 
@@ -101,24 +103,26 @@ model as untrusted at every step:
 ```
 backend/
   app/
-    main.py               FastAPI app: /health, /catalog, /decide
+    main.py               FastAPI app: /health, /catalog, /scenarios, /decide
     models/                 Mandate, Product, ProposedTransaction, ValidationResult, Decision, ...
     validator/               Deterministic mandate validator (budget/category/expiry)
     upsell/                   LLM client, upsell engine, decision engine
     audit/                    SQLite audit log
     catalog/                  Merchant product catalog
     razorpay_client/          Razorpay test-mode order creation
+    scenarios/                The 5 demo scenarios - shared by the simulator and /scenarios
   data/
     catalog.json               Product catalog — source of truth for the upsell engine
     audit_log.db                Generated at runtime, gitignored
   scripts/
-    buyer_agent_simulator.py  Queries the catalog, runs 5 demo scenarios against /decide
-  tests/                       48 tests
+    buyer_agent_simulator.py  Queries the catalog, runs the 5 demo scenarios against /decide
+  tests/                       51 tests
 frontend/
-  dashboard.py                Streamlit app: Trust panel + Growth panel (tabs)
+  dashboard.py                Streamlit app: Trust panel + Growth panel + Live demo (tabs)
   audit_view.py                 Trust panel data layer
   growth_view.py                Growth panel data layer
-  tests/                       12 tests
+  live_demo_view.py             Live demo data layer - calls the backend over HTTP
+  tests/                       19 tests
 ```
 
 ## Setup
@@ -152,6 +156,10 @@ creating a real test-mode order.
 
 **Frontend (dashboard):**
 
+The Trust and Growth panels read the audit log straight off disk, but the
+Live demo tab calls the backend over HTTP — start the backend first, or
+that tab shows a connection error (Trust/Growth still work fine without it).
+
 ```bash
 cd frontend
 python -m venv .venv
@@ -160,14 +168,22 @@ pip install -r requirements.txt
 python -m streamlit run dashboard.py
 ```
 
-**Try it end to end:**
+By default the dashboard looks for the backend at `http://localhost:8000`;
+override with the `AGENT_GATEKEEPER_BASE_URL` environment variable if it's
+running somewhere else (e.g. once backend and frontend are deployed
+separately).
+
+**Try it end to end** — either from the dashboard's **Live demo** tab
+(click a scenario, watch the agent's request and the gate's decision
+render side by side), or from a terminal:
 
 ```bash
 cd backend
 python scripts/buyer_agent_simulator.py
 ```
 
-This queries `/catalog` and runs five scenarios against `/decide`:
+Both drive the same five scenarios, defined once in
+`backend/app/scenarios/demo_scenarios.py`:
 
 | Scenario | What it proves |
 |---|---|
@@ -180,8 +196,8 @@ This queries `/catalog` and runs five scenarios against `/decide`:
 ## Testing
 
 ```bash
-cd backend && pytest    # 48 tests
-cd frontend && pytest   # 12 tests
+cd backend && pytest    # 51 tests
+cd frontend && pytest   # 19 tests
 ```
 
 Every LLM and Razorpay call in the test suite is mocked — the tests run
