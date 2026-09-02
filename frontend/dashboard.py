@@ -11,6 +11,7 @@
 
 import json
 import os
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
 import pandas as pd
@@ -24,7 +25,7 @@ from audit_view import (
     with_status_columns,
 )
 from growth_view import compute_growth_metrics, load_catalog_prices
-from live_demo_view import BLOCKED, OK, derive_steps, fetch_scenarios, outcome_summary, run_scenario
+from live_demo_view import BLOCKED, OK, derive_steps, fetch_catalog, fetch_scenarios, outcome_summary, run_scenario
 
 DEFAULT_DB_PATH = Path(__file__).resolve().parent.parent / "backend" / "data" / "audit_log.db"
 DB_PATH = Path(os.environ.get("AUDIT_LOG_DB_PATH", DEFAULT_DB_PATH))
@@ -214,8 +215,10 @@ with demo_tab:
 
     try:
         demo_scenarios = fetch_scenarios(BACKEND_URL)
+        catalog_products = fetch_catalog(BACKEND_URL)
     except Exception as exc:
         demo_scenarios = []
+        catalog_products = []
         st.error(
             f"Can't reach the backend at {BACKEND_URL} - start it with "
             f"`python -m uvicorn app.main:app --reload` from `backend/`, then reload this page.\n\n{exc}"
@@ -237,6 +240,89 @@ with demo_tab:
                         }
                     except Exception as exc:
                         st.session_state["demo_result"] = {"scenario": scenario, "error": str(exc)}
+
+        st.divider()
+        st.subheader("Build your own mandate")
+        st.caption(
+            "Not convinced the five scenarios above are just staged to look good? "
+            "Set your own budget, categories, and item, and send it through the same "
+            "`/decide` pipeline - nothing here is scripted."
+        )
+
+        if not catalog_products:
+            st.warning("No catalog items available - the catalog fetch above failed.")
+        else:
+            categories = sorted({product["category"] for product in catalog_products})
+
+            col_left, col_right = st.columns(2)
+            with col_left:
+                custom_buyer_id = st.text_input("Buyer ID", value="agent-custom-01", key="custom_buyer_id")
+                custom_budget = st.number_input(
+                    "Budget cap (INR)", min_value=0.01, value=2500.0, step=50.0, key="custom_budget"
+                )
+                custom_days_valid = st.number_input(
+                    "Mandate valid for (days from now)",
+                    min_value=-30,
+                    max_value=365,
+                    value=1,
+                    step=1,
+                    key="custom_days_valid",
+                    help="Use a negative number to hand the gate an already-expired mandate on purpose.",
+                )
+            with col_right:
+                custom_categories = st.multiselect(
+                    "Allowed categories", categories, default=categories[:1], key="custom_categories"
+                )
+                custom_intent = st.text_area(
+                    "Stated intent", value="Buy running gear", height=80, key="custom_intent"
+                )
+
+            sku_choices = {
+                f"{product['sku']} - {product['name']} (INR {product['price']:,.2f}, {product['category']})": product
+                for product in catalog_products
+            }
+            custom_sku_label = st.selectbox("Item to buy", list(sku_choices.keys()), key="custom_sku_label")
+            custom_product = sku_choices[custom_sku_label]
+            # Keyed on the SKU so switching items resets the amount to that
+            # item's real price instead of carrying over a stale one - the
+            # field stays editable so a budget violation can still be forced
+            # deliberately.
+            custom_amount = st.number_input(
+                "Transaction amount (INR)",
+                min_value=0.01,
+                value=float(custom_product["price"]),
+                step=10.0,
+                key=f"custom_amount_{custom_product['sku']}",
+            )
+
+            if st.button("Run this mandate", key="run_custom_mandate", use_container_width=True):
+                if not custom_categories:
+                    st.error("Pick at least one allowed category.")
+                else:
+                    custom_scenario = {
+                        "mandate": {
+                            "buyer_id": custom_buyer_id or "agent-custom-01",
+                            "intent": custom_intent or "Custom mandate",
+                            "budget_max": custom_budget,
+                            "category_allowlist": custom_categories,
+                            "expiry": (
+                                datetime.now(timezone.utc) + timedelta(days=custom_days_valid)
+                            ).isoformat(),
+                        },
+                        "transaction": {
+                            "sku": custom_product["sku"],
+                            "category": custom_product["category"],
+                            "amount": custom_amount,
+                        },
+                    }
+                    with st.spinner("Running against the live gate..."):
+                        try:
+                            st.session_state["demo_result"] = {
+                                "scenario": custom_scenario,
+                                "decision": run_scenario(BACKEND_URL, custom_scenario),
+                            }
+                        except Exception as exc:
+                            st.session_state["demo_result"] = {"scenario": custom_scenario, "error": str(exc)}
 
         result = st.session_state.get("demo_result")
 

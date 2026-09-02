@@ -12,7 +12,7 @@ EXPECTED_FIELDS = {"sku", "name", "price", "category", "stock", "upsell_eligible
 
 def test_get_catalog_returns_validated_products():
     products = get_catalog()
-    assert 3 <= len(products) <= 4
+    assert len(products) >= 3
     assert all(product.price > 0 for product in products)
     assert all(product.stock >= 0 for product in products)
 

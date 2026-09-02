@@ -8,6 +8,14 @@
     "upsell_eligible": false
   },
   {
+    "sku": "SHOE-002",
+    "name": "Ridgeline Hiking Boots",
+    "price": 3299.0,
+    "category": "footwear",
+    "stock": 25,
+    "upsell_eligible": false
+  },
+  {
     "sku": "SOCK-010",
     "name": "Cushioned Running Socks (3-Pack)",
     "price": 399.0,
@@ -29,6 +37,78 @@
     "price": 799.0,
     "category": "accessories",
     "stock": 60,
+    "upsell_eligible": true
+  },
+  {
+    "sku": "CAP-031",
+    "name": "Running Cap",
+    "price": 349.0,
+    "category": "accessories",
+    "stock": 90,
+    "upsell_eligible": true
+  },
+  {
+    "sku": "BAG-032",
+    "name": "Gym Duffel Bag",
+    "price": 1299.0,
+    "category": "accessories",
+    "stock": 35,
+    "upsell_eligible": false
+  },
+  {
+    "sku": "SHIRT-040",
+    "name": "Moisture-Wicking Running Tee",
+    "price": 899.0,
+    "category": "apparel",
+    "stock": 100,
+    "upsell_eligible": true
+  },
+  {
+    "sku": "JACKET-041",
+    "name": "Windproof Running Jacket",
+    "price": 2199.0,
+    "category": "apparel",
+    "stock": 30,
+    "upsell_eligible": false
+  },
+  {
+    "sku": "WATCH-050",
+    "name": "GPS Running Watch",
+    "price": 8999.0,
+    "category": "electronics",
+    "stock": 15,
+    "upsell_eligible": false
+  },
+  {
+    "sku": "EARBUDS-051",
+    "name": "Wireless Sport Earbuds",
+    "price": 3499.0,
+    "category": "electronics",
+    "stock": 50,
+    "upsell_eligible": true
+  },
+  {
+    "sku": "MAT-060",
+    "name": "Yoga Mat",
+    "price": 999.0,
+    "category": "fitness",
+    "stock": 65,
+    "upsell_eligible": false
+  },
+  {
+    "sku": "ROLLER-061",
+    "name": "Foam Roller",
+    "price": 799.0,
+    "category": "fitness",
+    "stock": 55,
+    "upsell_eligible": true
+  },
+  {
+    "sku": "BAND-062",
+    "name": "Resistance Bands Set",
+    "price": 499.0,
+    "category": "fitness",
+    "stock": 80,
     "upsell_eligible": true
   }
 ]

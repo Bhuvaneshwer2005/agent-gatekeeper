@@ -31,6 +31,13 @@ def fetch_scenarios(base_url: str, timeout: float = 10.0) -> List[Dict[str, Any]
     return response.json()
 
 
+def fetch_catalog(base_url: str, timeout: float = 10.0) -> List[Dict[str, Any]]:
+    """Fetch the live product catalog - used to populate the custom mandate builder."""
+    response = httpx.get(f"{base_url}/catalog", timeout=timeout)
+    response.raise_for_status()
+    return response.json()
+
+
 def run_scenario(base_url: str, scenario: Dict[str, Any], timeout: float = 40.0) -> Dict[str, Any]:
     """POST one scenario to /decide and return the decision.
 
