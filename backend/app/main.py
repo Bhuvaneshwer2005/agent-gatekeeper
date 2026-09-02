@@ -12,6 +12,7 @@ from app.models.decision import Decision
 from app.models.decision_request import DecisionRequest
 from app.models.product import Product
 from app.razorpay_client.checkout import create_order
+from app.scenarios.demo_scenarios import build_scenarios
 from app.upsell.decision_engine import make_decision
 
 app = FastAPI(title="Agent Gatekeeper")
@@ -32,6 +33,18 @@ def catalog():
     both see exactly one source of truth for product info.
     """
     return get_catalog()
+
+
+@app.get("/scenarios")
+def scenarios():
+    """Serve the demo scenarios, built fresh from the current catalog.
+
+    Exists so the dashboard's Live demo tab can offer the same scenarios
+    the terminal simulator runs, without duplicating their definitions on
+    the frontend - which matters more once the two are deployed separately
+    and can't share a filesystem.
+    """
+    return build_scenarios([product.model_dump() for product in get_catalog()])
 
 
 @app.post("/decide", response_model=Decision)

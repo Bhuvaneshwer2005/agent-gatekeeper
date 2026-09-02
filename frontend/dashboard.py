@@ -1,10 +1,13 @@
-# Agent Gatekeeper dashboard: Trust panel + Growth panel.
+# Agent Gatekeeper dashboard: Trust panel + Growth panel + Live demo.
 #
-# Both panels read the same audit log (Step 8) - there's no separate data
-# path for either one, so what they show is exactly what happened, not a
-# summary computed elsewhere. They're kept in separate tabs, not stacked
-# on one long page, so they read as two distinct views rather than one
-# panel with a "and also here's growth" afterthought tacked on.
+# Trust and Growth read the same audit log (Step 8) - there's no separate
+# data path for either one, so what they show is exactly what happened, not
+# a summary computed elsewhere. Live demo is the odd one out: it's the only
+# tab that talks to the backend over HTTP, because it drives new decisions
+# rather than reporting on old ones.
+#
+# All three are separate tabs, not stacked on one long page, so they read as
+# distinct views rather than one panel with the others tacked on.
 
 import json
 import os
@@ -21,12 +24,15 @@ from audit_view import (
     with_status_columns,
 )
 from growth_view import compute_growth_metrics, load_catalog_prices
+from live_demo_view import BLOCKED, OK, derive_steps, fetch_scenarios, outcome_summary, run_scenario
 
 DEFAULT_DB_PATH = Path(__file__).resolve().parent.parent / "backend" / "data" / "audit_log.db"
 DB_PATH = Path(os.environ.get("AUDIT_LOG_DB_PATH", DEFAULT_DB_PATH))
 
 DEFAULT_CATALOG_PATH = Path(__file__).resolve().parent.parent / "backend" / "data" / "catalog.json"
 CATALOG_PATH = Path(os.environ.get("CATALOG_PATH", DEFAULT_CATALOG_PATH))
+
+BACKEND_URL = os.environ.get("AGENT_GATEKEEPER_BASE_URL", "http://localhost:8000")
 
 st.set_page_config(page_title="Agent Gatekeeper", page_icon="\U0001F6E1", layout="wide")
 
@@ -37,7 +43,9 @@ if st.button("\U0001F504 Refresh"):
 
 df = load_audit_log(DB_PATH)
 
-trust_tab, growth_tab = st.tabs(["\U0001F6E1 Trust Panel", "\U0001F4C8 Growth Panel"])
+trust_tab, growth_tab, demo_tab = st.tabs(
+    ["\U0001F6E1 Trust Panel", "\U0001F4C8 Growth Panel", "\U000025B6 Live Demo"]
+)
 
 with trust_tab:
     st.caption(
@@ -196,3 +204,82 @@ with growth_tab:
                     """,
                     unsafe_allow_html=True,
                 )
+
+with demo_tab:
+    st.caption(
+        "Run any scenario against the live backend and watch what the gate does "
+        "with it. Left is what the buyer agent asked for; right is the decision, "
+        "step by step."
+    )
+
+    try:
+        demo_scenarios = fetch_scenarios(BACKEND_URL)
+    except Exception as exc:
+        demo_scenarios = []
+        st.error(
+            f"Can't reach the backend at {BACKEND_URL} - start it with "
+            f"`python -m uvicorn app.main:app --reload` from `backend/`, then reload this page.\n\n{exc}"
+        )
+
+    if demo_scenarios:
+        # One button per scenario, laid out in a row. Clicking stores the
+        # result in session state so it survives the reruns Streamlit does
+        # on every interaction.
+        button_columns = st.columns(len(demo_scenarios))
+        for column, scenario in zip(button_columns, demo_scenarios):
+            label = scenario["name"].replace("_", " ")
+            if column.button(label, key=f"run-{scenario['name']}", use_container_width=True):
+                with st.spinner("Running against the live gate..."):
+                    try:
+                        st.session_state["demo_result"] = {
+                            "scenario": scenario,
+                            "decision": run_scenario(BACKEND_URL, scenario),
+                        }
+                    except Exception as exc:
+                        st.session_state["demo_result"] = {"scenario": scenario, "error": str(exc)}
+
+        result = st.session_state.get("demo_result")
+
+        if result is None:
+            st.info("Pick a scenario above to run it.")
+        elif "error" in result:
+            st.error(f"Request failed: {result['error']}")
+        else:
+            scenario = result["scenario"]
+            decision = result["decision"]
+            mandate = scenario["mandate"]
+            transaction = scenario["transaction"]
+
+            agent_column, gate_column = st.columns(2)
+
+            with agent_column:
+                st.subheader("Buyer agent asks")
+                st.markdown(
+                    f"**Agent** `{mandate['buyer_id']}`  \n"
+                    f"**Budget cap** ₹{mandate['budget_max']:,.2f}  \n"
+                    f"**Allowed categories** {', '.join(mandate['category_allowlist'])}  \n"
+                    f"**Wants** `{transaction['sku']}` · ₹{transaction['amount']:,.2f} "
+                    f"({transaction['category']})"
+                )
+                # The injection payload is shown verbatim rather than
+                # summarised - the whole point is that a judge can read the
+                # hostile instruction and then watch it fail anyway.
+                st.markdown("**Stated intent**")
+                st.info(mandate["intent"])
+
+            with gate_column:
+                st.subheader("Gatekeeper does")
+                for step in derive_steps(decision):
+                    icon = {OK: "\u2705", BLOCKED: "\u274C"}.get(step["status"], "\u2022")
+                    st.markdown(f"{icon} {step['label']}")
+                    if step["detail"]:
+                        st.caption(step["detail"])
+
+            summary = outcome_summary(decision)
+            if summary["status"] == BLOCKED:
+                st.error(summary["text"])
+            else:
+                st.success(summary["text"])
+
+            with st.expander("Raw decision JSON"):
+                st.code(json.dumps(decision, indent=2, ensure_ascii=False), language="json")
