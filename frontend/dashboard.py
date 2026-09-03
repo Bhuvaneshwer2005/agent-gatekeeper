@@ -629,18 +629,59 @@ with stress_tab:
                 f"{len(failures)} of {summary['total']} case(s) did not behave as expected - "
                 "review these before trusting the rest."
             )
-            for r in failures:
-                with st.expander(f"❌ {r['case']['id']} - {r['case']['kind']}"):
-                    st.write(f"**Why it failed:** {r['reason']}")
-                    st.write("**Mandate:**")
-                    st.json(r["case"]["mandate"])
-                    st.write("**Transaction:**")
-                    st.json(r["case"]["transaction"])
-                    if r["decision"] is not None:
-                        st.write("**Decision received:**")
-                        st.json(r["decision"])
         else:
             st.success(f"All {summary['total']} cases behaved exactly as expected.")
+
+        st.subheader(f"All {len(stress_results)} cases")
+        st.caption(
+            "Every case the batch ran, not just the failures above - what it expected, what "
+            "actually happened, and why. Sort or search any column to dig in."
+        )
+
+        def expected_outcome(case: dict) -> str:
+            if case["expect"]["approved"]:
+                return "approved"
+            return f"declined ({case['expect']['violated_rule']})"
+
+        cases_table = pd.DataFrame(
+            [
+                {
+                    "Result": "✅ passed" if r["status"] != FAILED else "❌ failed",
+                    "Case ID": r["case"]["id"],
+                    "Group": GROUP_LABELS.get(r["case"]["group"], r["case"]["group"]),
+                    "Expected": expected_outcome(r["case"]),
+                    "Reason": r["reason"],
+                }
+                for r in stress_results
+            ]
+        )
+        st.dataframe(cases_table, use_container_width=True, hide_index=True)
+
+        st.subheader("Inspect a case")
+        case_lookup = {r["case"]["id"]: r for r in stress_results}
+        inspect_id = st.selectbox(
+            "Case",
+            list(case_lookup.keys()),
+            format_func=lambda case_id: (
+                f"{'✅' if case_lookup[case_id]['status'] != FAILED else '❌'} {case_id}"
+            ),
+            key="inspect_stress_case",
+        )
+        inspected = case_lookup[inspect_id]
+        st.write(f"**{inspected['case']['kind']}**")
+        st.write(f"**Result:** {inspected['reason']}")
+        detail_col1, detail_col2 = st.columns(2)
+        with detail_col1:
+            st.write("**Mandate:**")
+            st.json(inspected["case"]["mandate"])
+            st.write("**Transaction:**")
+            st.json(inspected["case"]["transaction"])
+        with detail_col2:
+            st.write("**Expected:**")
+            st.json(inspected["case"]["expect"])
+            if inspected["decision"] is not None:
+                st.write("**Decision received:**")
+                st.json(inspected["decision"])
 
 with mandates_tab:
     st.caption(
