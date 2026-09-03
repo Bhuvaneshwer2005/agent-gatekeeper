@@ -1,12 +1,14 @@
-# Agent Gatekeeper dashboard: Trust panel + Growth panel + Live demo.
+# Agent Gatekeeper dashboard: Trust panel + Growth panel + Live demo + Stress test.
 #
 # Trust and Growth read the same audit log (Step 8) - there's no separate
 # data path for either one, so what they show is exactly what happened, not
-# a summary computed elsewhere. Live demo is the odd one out: it's the only
-# tab that talks to the backend over HTTP, because it drives new decisions
-# rather than reporting on old ones.
+# a summary computed elsewhere. Live demo and Stress test are the odd ones
+# out: both talk to the backend over HTTP, because they drive new decisions
+# rather than reporting on old ones - Live demo runs one mandate at a time
+# and shows it step by step, Stress test runs a large generated batch and
+# grades the results.
 #
-# All three are separate tabs, not stacked on one long page, so they read as
+# All four are separate tabs, not stacked on one long page, so they read as
 # distinct views rather than one panel with the others tacked on.
 
 import json
@@ -26,6 +28,7 @@ from audit_view import (
 )
 from growth_view import compute_growth_metrics, load_catalog_prices
 from live_demo_view import BLOCKED, OK, derive_steps, fetch_catalog, fetch_scenarios, outcome_summary, run_scenario
+from stress_test_view import FAILED, evaluate_case, fetch_stress_cases, summarize
 
 DEFAULT_DB_PATH = Path(__file__).resolve().parent.parent / "backend" / "data" / "audit_log.db"
 DB_PATH = Path(os.environ.get("AUDIT_LOG_DB_PATH", DEFAULT_DB_PATH))
@@ -44,8 +47,13 @@ if st.button("\U0001F504 Refresh"):
 
 df = load_audit_log(DB_PATH)
 
-trust_tab, growth_tab, demo_tab = st.tabs(
-    ["\U0001F6E1 Trust Panel", "\U0001F4C8 Growth Panel", "\U000025B6 Live Demo"]
+trust_tab, growth_tab, demo_tab, stress_tab = st.tabs(
+    [
+        "\U0001F6E1 Trust Panel",
+        "\U0001F4C8 Growth Panel",
+        "\U000025B6 Live Demo",
+        "\U0001F9EA Stress Test",
+    ]
 )
 
 with trust_tab:
@@ -369,3 +377,98 @@ with demo_tab:
 
             with st.expander("Raw decision JSON"):
                 st.code(json.dumps(decision, indent=2, ensure_ascii=False), language="json")
+
+with stress_tab:
+    st.caption(
+        "One crafted mandate proves the gate survives that mandate. This runs a large, "
+        "structured batch of legitimate and adversarial mandates - built from every item "
+        "in the catalog, not five hand-picked examples - against the live gate and grades "
+        "every response against what should have happened."
+    )
+
+    GROUP_LABELS = {
+        "budget": "Budget boundary",
+        "category": "Category enforcement",
+        "expiry": "Expiry enforcement",
+        "multi_violation": "Multiple violations at once",
+        "injection_defense": "Prompt-injection defense",
+    }
+
+    try:
+        stress_cases = fetch_stress_cases(BACKEND_URL)
+    except Exception as exc:
+        stress_cases = []
+        st.error(
+            f"Can't reach the backend at {BACKEND_URL} - start it with "
+            f"`python -m uvicorn app.main:app --reload` from `backend/`, then reload this page.\n\n{exc}"
+        )
+
+    if stress_cases:
+        legitimate = sum(1 for c in stress_cases if c["expect"]["approved"])
+        adversarial = len(stress_cases) - legitimate
+        st.write(
+            f"**{len(stress_cases)} cases** ready - {legitimate} legitimate purchases that "
+            f"should be approved, {adversarial} edge cases and adversarial attempts that "
+            "should be caught. Every logged decision this produces lands in the Trust panel "
+            "like any other, since nothing here bypasses the audit log."
+        )
+
+        if st.button("\U0001F9EA Run stress test", key="run_stress_test", use_container_width=True):
+            progress_placeholder = st.empty()
+            status_placeholder = st.empty()
+            results = []
+            for index, case in enumerate(stress_cases):
+                status_placeholder.caption(f"Running {index + 1}/{len(stress_cases)} - `{case['id']}`")
+                try:
+                    decision = run_scenario(BACKEND_URL, case)
+                    outcome = evaluate_case(case, decision)
+                    results.append({"case": case, "decision": decision, **outcome})
+                except Exception as exc:
+                    results.append(
+                        {"case": case, "decision": None, "status": FAILED, "reason": f"request failed: {exc}"}
+                    )
+                progress_placeholder.progress((index + 1) / len(stress_cases))
+            progress_placeholder.empty()
+            status_placeholder.empty()
+            st.session_state["stress_results"] = results
+
+    stress_results = st.session_state.get("stress_results")
+
+    if stress_results is None:
+        if stress_cases:
+            st.info("Run the stress test above to grade the gate against the full batch.")
+    else:
+        summary = summarize(stress_results)
+
+        col1, col2, col3 = st.columns(3)
+        col1.metric("Total cases", summary["total"])
+        col2.metric("Passed", summary["passed"])
+        col3.metric(
+            "Failed",
+            summary["failed"],
+            help="A failure means the gate's actual decision didn't match what this case expected - worth reading before trusting the pass count.",
+        )
+
+        st.subheader("By category")
+        for group, stats in summary["by_group"].items():
+            label = GROUP_LABELS.get(group, group)
+            st.write(f"**{label}** - {stats['passed']}/{stats['total']} passed")
+
+        failures = [r for r in stress_results if r["status"] == FAILED]
+        if failures:
+            st.error(
+                f"{len(failures)} of {summary['total']} case(s) did not behave as expected - "
+                "review these before trusting the rest."
+            )
+            for r in failures:
+                with st.expander(f"❌ {r['case']['id']} - {r['case']['kind']}"):
+                    st.write(f"**Why it failed:** {r['reason']}")
+                    st.write("**Mandate:**")
+                    st.json(r["case"]["mandate"])
+                    st.write("**Transaction:**")
+                    st.json(r["case"]["transaction"])
+                    if r["decision"] is not None:
+                        st.write("**Decision received:**")
+                        st.json(r["decision"])
+        else:
+            st.success(f"All {summary['total']} cases behaved exactly as expected.")

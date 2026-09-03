@@ -13,6 +13,7 @@ from app.models.decision_request import DecisionRequest
 from app.models.product import Product
 from app.razorpay_client.checkout import create_order
 from app.scenarios.demo_scenarios import build_scenarios
+from app.scenarios.stress_cases import build_stress_cases
 from app.upsell.decision_engine import make_decision
 
 app = FastAPI(title="Agent Gatekeeper")
@@ -45,6 +46,15 @@ def scenarios():
     and can't share a filesystem.
     """
     return build_scenarios([product.model_dump() for product in get_catalog()])
+
+
+@app.get("/stress-cases")
+def stress_cases():
+    """Serve the stress-test batch: many structured mandate/transaction pairs,
+    built fresh from the current catalog, each carrying its own expected
+    outcome for the dashboard's Stress Test tab to grade against.
+    """
+    return build_stress_cases([product.model_dump() for product in get_catalog()])
 
 
 @app.post("/decide", response_model=Decision)
