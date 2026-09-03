@@ -79,3 +79,34 @@ def compute_growth_metrics(
         "projected_aov": projected_aov,
         "aov_lift_pct": aov_lift_pct,
     }
+
+
+def top_upsells(df: pd.DataFrame, limit: int = 5) -> pd.DataFrame:
+    """Which catalog SKUs the upsell engine has actually proposed most often,
+    among approved decisions - a ranking, not just the single acceptance
+    rate number, so a merchant can see which upsells are pulling weight.
+    """
+    approved = df[df["validation_approved"] == 1]
+    upsold = approved[approved["upsell_sku"].notna()]
+    if upsold.empty:
+        return pd.DataFrame(columns=["upsell_sku", "count"])
+
+    counts = upsold["upsell_sku"].value_counts().reset_index()
+    counts.columns = ["upsell_sku", "count"]
+    return counts.head(limit)
+
+
+def revenue_by_category(df: pd.DataFrame) -> pd.DataFrame:
+    """Approved order revenue grouped by the purchased item's category.
+
+    Uses the transaction's own category column already on every audit row -
+    no catalog lookup needed, since the category a buyer actually bought in
+    is exactly what was logged at decision time.
+    """
+    approved = df[df["validation_approved"] == 1]
+    if approved.empty:
+        return pd.DataFrame(columns=["category", "revenue"])
+
+    grouped = approved.groupby("category")["transaction_amount"].sum().reset_index()
+    grouped.columns = ["category", "revenue"]
+    return grouped.sort_values("revenue", ascending=False).reset_index(drop=True)

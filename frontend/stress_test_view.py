@@ -8,7 +8,7 @@
 # scenario (a mandate + a transaction), so there's no need for a second copy
 # of the same POST-to-/decide logic.
 
-from typing import Any, Dict, List
+from typing import Any, Dict, List, Optional
 
 import httpx
 
@@ -19,6 +19,26 @@ FAILED = "failed"
 def fetch_stress_cases(base_url: str, timeout: float = 10.0) -> List[Dict[str, Any]]:
     """Fetch the generated stress-test batch the backend built from the live catalog."""
     response = httpx.get(f"{base_url}/stress-cases", timeout=timeout)
+    response.raise_for_status()
+    return response.json()
+
+
+def submit_stress_run(
+    base_url: str, summary: Dict[str, Any], results: List[Dict[str, Any]], timeout: float = 15.0
+) -> None:
+    """Persist a graded run so it survives a page refresh - Streamlit's session
+    state, where the run otherwise lives, is wiped by a reload or a lost
+    connection.
+    """
+    response = httpx.post(
+        f"{base_url}/stress-runs", json={"summary": summary, "results": results}, timeout=timeout
+    )
+    response.raise_for_status()
+
+
+def fetch_latest_stress_run(base_url: str, timeout: float = 10.0) -> Optional[Dict[str, Any]]:
+    """Fetch the most recently persisted run, or None if none has ever been logged."""
+    response = httpx.get(f"{base_url}/stress-runs/latest", timeout=timeout)
     response.raise_for_status()
     return response.json()
 

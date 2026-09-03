@@ -1,14 +1,17 @@
-# Agent Gatekeeper dashboard: Trust panel + Growth panel + Live demo + Stress test.
+# Agent Gatekeeper dashboard: Trust panel + Growth panel + Live demo +
+# Stress test + Active Mandates.
 #
 # Trust and Growth read the same audit log (Step 8) - there's no separate
 # data path for either one, so what they show is exactly what happened, not
-# a summary computed elsewhere. Live demo and Stress test are the odd ones
-# out: both talk to the backend over HTTP, because they drive new decisions
-# rather than reporting on old ones - Live demo runs one mandate at a time
-# and shows it step by step, Stress test runs a large generated batch and
-# grades the results.
+# a summary computed elsewhere. Live demo, Stress test, and Active Mandates
+# are the odd ones out: all three talk to the backend over HTTP, because
+# they drive new decisions or new state rather than reporting on old ones -
+# Live demo runs one mandate at a time and shows it step by step, Stress
+# test runs a large generated batch and grades the results, and Active
+# Mandates issues and tracks mandates that persist across multiple
+# purchases instead of getting a fresh budget on every call.
 #
-# All four are separate tabs, not stacked on one long page, so they read as
+# All five are separate tabs, not stacked on one long page, so they read as
 # distinct views rather than one panel with the others tacked on.
 
 import json
@@ -26,9 +29,17 @@ from audit_view import (
     load_audit_log,
     with_status_columns,
 )
-from growth_view import compute_growth_metrics, load_catalog_prices
+from growth_view import compute_growth_metrics, load_catalog_prices, revenue_by_category, top_upsells
 from live_demo_view import BLOCKED, OK, derive_steps, fetch_catalog, fetch_scenarios, outcome_summary, run_scenario
-from stress_test_view import FAILED, evaluate_case, fetch_stress_cases, summarize
+from mandate_registry_view import fetch_mandates, issue_mandate, status_icon, summarize_mandates
+from stress_test_view import (
+    FAILED,
+    evaluate_case,
+    fetch_latest_stress_run,
+    fetch_stress_cases,
+    submit_stress_run,
+    summarize,
+)
 
 DEFAULT_DB_PATH = Path(__file__).resolve().parent.parent / "backend" / "data" / "audit_log.db"
 DB_PATH = Path(os.environ.get("AUDIT_LOG_DB_PATH", DEFAULT_DB_PATH))
@@ -47,12 +58,13 @@ if st.button("\U0001F504 Refresh"):
 
 df = load_audit_log(DB_PATH)
 
-trust_tab, growth_tab, demo_tab, stress_tab = st.tabs(
+trust_tab, growth_tab, demo_tab, stress_tab, mandates_tab = st.tabs(
     [
         "\U0001F6E1 Trust Panel",
         "\U0001F4C8 Growth Panel",
         "\U000025B6 Live Demo",
         "\U0001F9EA Stress Test",
+        "\U0001F5C2 Active Mandates",
     ]
 )
 
@@ -214,6 +226,44 @@ with growth_tab:
                     unsafe_allow_html=True,
                 )
 
+            st.divider()
+            top_col, category_col = st.columns(2)
+
+            with top_col:
+                st.subheader("Top proposed upsells")
+                st.caption("Which catalog items the upsell engine reaches for most often.")
+                top = top_upsells(df)
+                if top.empty:
+                    st.info("No upsells proposed yet.")
+                else:
+                    for _, row in top.iterrows():
+                        st.write(f"**{row['upsell_sku']}** - proposed {int(row['count'])}×")
+
+            with category_col:
+                st.subheader("Revenue by category")
+                st.caption("Approved order value, grouped by what was actually purchased.")
+                by_category = revenue_by_category(df)
+                if by_category.empty:
+                    st.info("No approved orders yet.")
+                else:
+                    max_revenue = by_category["revenue"].max() or 1
+                    for _, row in by_category.iterrows():
+                        bar_pct = row["revenue"] / max_revenue * 100
+                        st.markdown(
+                            f"""
+                            <div style="margin-bottom: 0.6rem;">
+                              <div style="font-size: 0.85rem; margin-bottom: 0.2rem;">{row['category']}</div>
+                              <div style="background: rgba(128,128,128,0.25); border-radius: 4px; overflow: hidden;">
+                                <div style="background: #5fbf7f; width: {bar_pct:.1f}%; padding: 0.35rem 0.5rem;
+                                            color: white; font-size: 0.8rem; white-space: nowrap;">
+                                  ₹{row['revenue']:,.2f}
+                                </div>
+                              </div>
+                            </div>
+                            """,
+                            unsafe_allow_html=True,
+                        )
+
 with demo_tab:
     st.caption(
         "Run any scenario against the live backend and watch what the gate does "
@@ -332,6 +382,86 @@ with demo_tab:
                         except Exception as exc:
                             st.session_state["demo_result"] = {"scenario": custom_scenario, "error": str(exc)}
 
+        st.divider()
+        st.subheader("Or charge an existing mandate")
+        st.caption(
+            "Every mandate above is one-off: fresh budget, spent in one call, gone. Issue a "
+            "mandate on the Active Mandates tab instead, then run several purchases against it "
+            "here and watch its real remaining budget shrink - including the purchase that "
+            "finally exceeds it, even though no single purchase looked like a violation on its own."
+        )
+
+        try:
+            active_mandates = [m for m in fetch_mandates(BACKEND_URL) if m["status"] == "active"]
+        except Exception:
+            active_mandates = []
+
+        if not active_mandates:
+            st.info("No active mandates yet - issue one on the Active Mandates tab first.")
+        elif not catalog_products:
+            st.warning("No catalog items available - the catalog fetch above failed.")
+        else:
+            mandate_choices = {
+                f"{m['mandate_id']} - {m['buyer_id']} - ₹{m['budget_remaining']:,.2f} left "
+                f"of ₹{m['budget_max']:,.2f}": m
+                for m in active_mandates
+            }
+            chosen_label = st.selectbox("Mandate", list(mandate_choices.keys()), key="registry_mandate_choice")
+            chosen_mandate = mandate_choices[chosen_label]
+
+            eligible_products = [p for p in catalog_products if p["category"] in chosen_mandate["category_allowlist"]]
+            if not eligible_products:
+                st.warning(
+                    f"No catalog items fall inside this mandate's allowed categories "
+                    f"({', '.join(chosen_mandate['category_allowlist'])})."
+                )
+            else:
+                registry_sku_choices = {
+                    f"{p['sku']} - {p['name']} (INR {p['price']:,.2f}, {p['category']})": p
+                    for p in eligible_products
+                }
+                registry_sku_label = st.selectbox(
+                    "Item to buy", list(registry_sku_choices.keys()), key="registry_sku_label"
+                )
+                registry_product = registry_sku_choices[registry_sku_label]
+                registry_amount = st.number_input(
+                    "Transaction amount (INR)",
+                    min_value=0.01,
+                    value=float(registry_product["price"]),
+                    step=10.0,
+                    key=f"registry_amount_{chosen_mandate['mandate_id']}_{registry_product['sku']}",
+                )
+
+                if st.button("Charge this mandate", key="run_registry_mandate", use_container_width=True):
+                    registry_payload = {
+                        "mandate_id": chosen_mandate["mandate_id"],
+                        "transaction": {
+                            "sku": registry_product["sku"],
+                            "category": registry_product["category"],
+                            "amount": registry_amount,
+                        },
+                    }
+                    # The agent-request panel below expects scenario["mandate"]
+                    # with the usual fields - reconstruct that shape from the
+                    # registry record so the same rendering works whether the
+                    # mandate came in inline or by id.
+                    display_scenario = {
+                        "mandate": {
+                            "buyer_id": chosen_mandate["buyer_id"],
+                            "intent": chosen_mandate["intent"],
+                            "budget_max": chosen_mandate["budget_max"],
+                            "category_allowlist": chosen_mandate["category_allowlist"],
+                            "expiry": chosen_mandate["expiry"],
+                        },
+                        "transaction": registry_payload["transaction"],
+                    }
+                    with st.spinner("Running against the live gate..."):
+                        try:
+                            decision = run_scenario(BACKEND_URL, registry_payload)
+                            st.session_state["demo_result"] = {"scenario": display_scenario, "decision": decision}
+                        except Exception as exc:
+                            st.session_state["demo_result"] = {"scenario": display_scenario, "error": str(exc)}
+
         result = st.session_state.get("demo_result")
 
         if result is None:
@@ -430,7 +560,43 @@ with stress_tab:
                 progress_placeholder.progress((index + 1) / len(stress_cases))
             progress_placeholder.empty()
             status_placeholder.empty()
+
+            run_summary = summarize(results)
+            try:
+                submit_stress_run(BACKEND_URL, run_summary, results)
+            except Exception as exc:
+                # A persistence failure shouldn't hide the run that just
+                # finished - it's still shown below, just won't survive a
+                # refresh this time.
+                st.warning(f"Ran fine, but couldn't save this run for later: {exc}")
+
             st.session_state["stress_results"] = results
+            st.session_state["stress_summary"] = run_summary
+            st.session_state["stress_run_note"] = None
+
+    # On first load of this tab in a fresh session (a refresh, a new
+    # browser tab, or someone else opening the dashboard), there's nothing
+    # in session state yet - reach for the last persisted run instead of
+    # showing nothing, which is the exact gap that made a finished run
+    # disappear the moment the page reloaded.
+    if "stress_results" not in st.session_state:
+        try:
+            latest_run = fetch_latest_stress_run(BACKEND_URL)
+        except Exception:
+            latest_run = None
+
+        if latest_run is not None:
+            st.session_state["stress_results"] = latest_run["results"]
+            st.session_state["stress_summary"] = {
+                "total": latest_run["total"],
+                "passed": latest_run["passed"],
+                "failed": latest_run["failed"],
+                "by_group": latest_run["by_group"],
+            }
+            st.session_state["stress_run_note"] = (
+                f"Showing the most recent saved run, from {latest_run['created_at']} - "
+                "not from this browser session. Run again above for a fresh result."
+            )
 
     stress_results = st.session_state.get("stress_results")
 
@@ -438,7 +604,10 @@ with stress_tab:
         if stress_cases:
             st.info("Run the stress test above to grade the gate against the full batch.")
     else:
-        summary = summarize(stress_results)
+        if st.session_state.get("stress_run_note"):
+            st.caption(st.session_state["stress_run_note"])
+
+        summary = st.session_state.get("stress_summary") or summarize(stress_results)
 
         col1, col2, col3 = st.columns(3)
         col1.metric("Total cases", summary["total"])
@@ -472,3 +641,101 @@ with stress_tab:
                         st.json(r["decision"])
         else:
             st.success(f"All {summary['total']} cases behaved exactly as expected.")
+
+with mandates_tab:
+    st.caption(
+        "Every mandate everywhere else in this dashboard is inline: presented fresh with "
+        "every purchase, spent, and forgotten. A mandate issued here gets a real id and a "
+        "persisted budget that purchases charged against it draw down cumulatively - closing "
+        "the gap a fresh-mandate-per-call design can't: an agent staying under a per-purchase "
+        "cap across several small purchases while blowing right past the mandate's real total."
+    )
+
+    st.subheader("Issue a new mandate")
+
+    try:
+        mandate_catalog = fetch_catalog(BACKEND_URL)
+        mandate_categories = sorted({product["category"] for product in mandate_catalog})
+    except Exception as exc:
+        mandate_catalog = []
+        mandate_categories = []
+        st.error(
+            f"Can't reach the backend at {BACKEND_URL} - start it with "
+            f"`python -m uvicorn app.main:app --reload` from `backend/`, then reload this page.\n\n{exc}"
+        )
+
+    if mandate_categories:
+        issue_col_left, issue_col_right = st.columns(2)
+        with issue_col_left:
+            issue_buyer_id = st.text_input("Buyer ID", value="agent-mandate-01", key="issue_buyer_id")
+            issue_budget = st.number_input(
+                "Total budget (INR)", min_value=0.01, value=3000.0, step=50.0, key="issue_budget"
+            )
+            issue_days = st.number_input(
+                "Valid for (days)", min_value=1, max_value=365, value=7, step=1, key="issue_days"
+            )
+        with issue_col_right:
+            issue_categories = st.multiselect(
+                "Allowed categories", mandate_categories, default=mandate_categories[:1], key="issue_categories"
+            )
+            issue_intent = st.text_area(
+                "Intent", value="Ongoing running-gear purchases", height=80, key="issue_intent"
+            )
+
+        if st.button("Issue mandate", key="issue_mandate_btn", use_container_width=True):
+            if not issue_categories:
+                st.error("Pick at least one allowed category.")
+            else:
+                issue_payload = {
+                    "buyer_id": issue_buyer_id or "agent-mandate-01",
+                    "intent": issue_intent or "Ongoing purchases",
+                    "budget_max": issue_budget,
+                    "category_allowlist": issue_categories,
+                    "expiry": (datetime.now(timezone.utc) + timedelta(days=issue_days)).isoformat(),
+                }
+                try:
+                    issued = issue_mandate(BACKEND_URL, issue_payload)
+                    st.success(
+                        f"Issued `{issued['mandate_id']}` - ₹{issued['budget_remaining']:,.2f} available. "
+                        "Charge purchases against it from the Live Demo tab's "
+                        "\"Or charge an existing mandate\" section."
+                    )
+                except Exception as exc:
+                    st.error(f"Couldn't issue mandate: {exc}")
+
+    st.divider()
+    st.subheader("All mandates")
+
+    try:
+        all_mandates = fetch_mandates(BACKEND_URL)
+    except Exception:
+        all_mandates = []
+
+    if not all_mandates:
+        st.info("No mandates issued yet - use the form above to issue the first one.")
+    else:
+        status_counts = summarize_mandates(all_mandates)
+        count_col1, count_col2, count_col3 = st.columns(3)
+        count_col1.metric(f"{status_icon('active')} Active", status_counts["active"])
+        count_col2.metric(f"{status_icon('exhausted')} Exhausted", status_counts["exhausted"])
+        count_col3.metric(f"{status_icon('expired')} Expired", status_counts["expired"])
+
+        mandates_df = pd.DataFrame(all_mandates)
+        mandates_df["Status"] = mandates_df["status"].map(lambda s: f"{status_icon(s)} {s}")
+        mandates_df["Categories"] = mandates_df["category_allowlist"].map(", ".join)
+        for money_col in ("budget_max", "budget_spent", "budget_remaining"):
+            mandates_df[money_col] = mandates_df[money_col].map(lambda v: f"₹{v:,.2f}")
+
+        display_mandates = mandates_df[
+            ["mandate_id", "Status", "buyer_id", "budget_max", "budget_spent", "budget_remaining", "Categories", "expiry"]
+        ].rename(
+            columns={
+                "mandate_id": "Mandate ID",
+                "buyer_id": "Buyer",
+                "budget_max": "Budget",
+                "budget_spent": "Spent",
+                "budget_remaining": "Remaining",
+                "expiry": "Expires",
+            }
+        )
+        st.dataframe(display_mandates, use_container_width=True, hide_index=True)

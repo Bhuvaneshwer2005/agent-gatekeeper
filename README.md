@@ -30,13 +30,27 @@ propose at most one upsell from the real catalog, or none at all.
    deterministic check — and only from a candidate list the system itself
    pre-filtered for budget and category, so the model is never in a
    position to get the numbers wrong.
-3. **Logs every decision** — approved, upsold, or refused — to an audit
-   trail as a single structured row, and surfaces three live dashboard
+3. **Tracks a mandate's real budget over time, not just per purchase.**
+   A mandate can be issued once through the registry and charged against
+   by id across several separate purchases, with its budget drawn down
+   cumulatively — closing the gap a fresh-mandate-per-call design can't:
+   an agent staying under a per-purchase cap across several small
+   purchases while blowing right past the mandate's real total. Every
+   demo scenario, the custom mandate builder, and the whole stress-test
+   batch still use the original one-off, inline mandate shape — the
+   registry is purely additive.
+4. **Logs every decision** — approved, upsold, or refused — to an audit
+   trail as a single structured row, and surfaces five live dashboard
    tabs: a **Trust panel** (every decision, refusals visually distinct,
    raw LLM output visible even when rejected), a **Growth panel** (upsell
-   acceptance rate, AOV lift), and a **Live demo** tab where any of the
-   five scenarios can be run from the browser, showing the buyer agent's
-   request beside the gate's step-by-step decision.
+   acceptance rate, AOV lift, top proposed upsells, revenue by category),
+   a **Live demo** tab where any of the five scenarios can be run from the
+   browser (or a mandate built by hand, or an existing registry mandate
+   charged again), a **Stress test** tab that fires 74 structured
+   legitimate-and-adversarial cases — built from every catalog item, not
+   five hand-picked examples — at the live gate and grades the result, and
+   an **Active mandates** tab for issuing and watching registry mandates
+   draw down in real time.
 
 ## Architecture
 
@@ -103,26 +117,33 @@ model as untrusted at every step:
 ```
 backend/
   app/
-    main.py               FastAPI app: /health, /catalog, /scenarios, /decide
+    main.py               FastAPI app: /health, /catalog, /scenarios, /stress-cases,
+                           /mandates, /decide, /stress-runs
     models/                 Mandate, Product, ProposedTransaction, ValidationResult, Decision, ...
     validator/               Deterministic mandate validator (budget/category/expiry)
     upsell/                   LLM client, upsell engine, decision engine
-    audit/                    SQLite audit log
+    audit/                    SQLite audit log + stress-run persistence
     catalog/                  Merchant product catalog
     razorpay_client/          Razorpay test-mode order creation
-    scenarios/                The 5 demo scenarios - shared by the simulator and /scenarios
+    registry/                 Persisted mandate registry - issue once, spend cumulatively
+    scenarios/                The 5 demo scenarios + the 74-case stress-test batch,
+                               both built fresh from the live catalog
   data/
     catalog.json               Product catalog — source of truth for the upsell engine
-    audit_log.db                Generated at runtime, gitignored
+    audit_log.db                Generated at runtime, gitignored - audit log, mandate
+                                 registry, and stress-run tables all live here
   scripts/
     buyer_agent_simulator.py  Queries the catalog, runs the 5 demo scenarios against /decide
-  tests/                       51 tests
+  tests/                       83 tests
 frontend/
-  dashboard.py                Streamlit app: Trust panel + Growth panel + Live demo (tabs)
+  dashboard.py                Streamlit app: Trust + Growth + Live demo + Stress test +
+                               Active mandates (tabs)
   audit_view.py                 Trust panel data layer
   growth_view.py                Growth panel data layer
   live_demo_view.py             Live demo data layer - calls the backend over HTTP
-  tests/                       19 tests
+  stress_test_view.py           Stress test data layer - grading logic + run persistence
+  mandate_registry_view.py      Active mandates data layer
+  tests/                       36 tests
 ```
 
 ## Setup
@@ -156,9 +177,10 @@ creating a real test-mode order.
 
 **Frontend (dashboard):**
 
-The Trust and Growth panels read the audit log straight off disk, but the
-Live demo tab calls the backend over HTTP — start the backend first, or
-that tab shows a connection error (Trust/Growth still work fine without it).
+The Trust and Growth panels read the audit log straight off disk, but Live
+demo, Stress test, and Active Mandates all call the backend over HTTP —
+start the backend first, or those tabs show a connection error (Trust/Growth
+still work fine without it).
 
 ```bash
 cd frontend
@@ -196,8 +218,8 @@ Both drive the same five scenarios, defined once in
 ## Testing
 
 ```bash
-cd backend && pytest    # 51 tests
-cd frontend && pytest   # 19 tests
+cd backend && pytest    # 83 tests
+cd frontend && pytest   # 36 tests
 ```
 
 Every LLM and Razorpay call in the test suite is mocked — the tests run

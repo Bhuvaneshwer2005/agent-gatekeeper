@@ -41,11 +41,21 @@ def fetch_catalog(base_url: str, timeout: float = 10.0) -> List[Dict[str, Any]]:
 def run_scenario(base_url: str, scenario: Dict[str, Any], timeout: float = 40.0) -> Dict[str, Any]:
     """POST one scenario to /decide and return the decision.
 
+    A scenario carries its mandate inline ("mandate") - the shape every
+    fixed scenario, the custom mandate builder, and the stress-test batch
+    use - or by reference ("mandate_id"), the shape the Active Mandates
+    tab's "charge an existing mandate" flow uses. Whichever key is present
+    is forwarded as-is; /decide itself enforces that exactly one is valid.
+
     The timeout is generous because a scenario that reaches the LLM can take
     a couple of seconds, and one that gets refused and retried takes twice
     that.
     """
-    payload = {"mandate": scenario["mandate"], "transaction": scenario["transaction"]}
+    payload: Dict[str, Any] = {"transaction": scenario["transaction"]}
+    if "mandate_id" in scenario:
+        payload["mandate_id"] = scenario["mandate_id"]
+    else:
+        payload["mandate"] = scenario["mandate"]
     response = httpx.post(f"{base_url}/decide", json=payload, timeout=timeout)
     response.raise_for_status()
     return response.json()

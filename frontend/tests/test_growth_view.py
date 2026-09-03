@@ -6,7 +6,7 @@ import sqlite3
 import pandas as pd
 
 from audit_view import load_audit_log
-from growth_view import compute_growth_metrics, load_catalog_prices
+from growth_view import compute_growth_metrics, load_catalog_prices, revenue_by_category, top_upsells
 
 SCHEMA = """
 CREATE TABLE audit_log (
@@ -149,3 +149,59 @@ def test_compute_growth_metrics_against_a_real_sqlite_roundtrip(tmp_path):
     assert metrics["total_approved"] == 2
     assert metrics["upsell_count"] == 1  # must not be miscounted due to NaN truthiness
     assert metrics["acceptance_rate"] == 0.5
+
+
+def test_top_upsells_returns_empty_frame_when_nothing_upsold():
+    df = make_df([{"validation_approved": 1, "upsell_sku": None, "transaction_amount": 1000.0}])
+    result = top_upsells(df)
+    assert result.empty
+    assert list(result.columns) == ["upsell_sku", "count"]
+
+
+def test_top_upsells_ranks_by_frequency():
+    df = make_df(
+        [
+            {"validation_approved": 1, "upsell_sku": "SOCK-010", "transaction_amount": 1000.0},
+            {"validation_approved": 1, "upsell_sku": "SOCK-010", "transaction_amount": 1000.0},
+            {"validation_approved": 1, "upsell_sku": "INSOLE-020", "transaction_amount": 1000.0},
+            {"validation_approved": 0, "upsell_sku": "SOCK-010", "transaction_amount": 1000.0},  # declined, excluded
+        ]
+    )
+    result = top_upsells(df)
+    assert result.iloc[0]["upsell_sku"] == "SOCK-010"
+    assert result.iloc[0]["count"] == 2
+    assert result.iloc[1]["upsell_sku"] == "INSOLE-020"
+    assert result.iloc[1]["count"] == 1
+
+
+def test_top_upsells_respects_limit():
+    df = make_df(
+        [
+            {"validation_approved": 1, "upsell_sku": sku, "transaction_amount": 1000.0}
+            for sku in ["A", "B", "C"]
+        ]
+    )
+    assert len(top_upsells(df, limit=2)) == 2
+
+
+def test_revenue_by_category_returns_empty_frame_when_no_approved_rows():
+    df = make_df([{"validation_approved": 0, "category": "footwear", "transaction_amount": 1000.0}])
+    result = revenue_by_category(df)
+    assert result.empty
+    assert list(result.columns) == ["category", "revenue"]
+
+
+def test_revenue_by_category_sums_and_sorts_descending():
+    df = make_df(
+        [
+            {"validation_approved": 1, "category": "footwear", "transaction_amount": 1000.0},
+            {"validation_approved": 1, "category": "footwear", "transaction_amount": 500.0},
+            {"validation_approved": 1, "category": "electronics", "transaction_amount": 8999.0},
+            {"validation_approved": 0, "category": "electronics", "transaction_amount": 999999.0},  # excluded
+        ]
+    )
+    result = revenue_by_category(df)
+    assert result.iloc[0]["category"] == "electronics"
+    assert result.iloc[0]["revenue"] == 8999.0
+    assert result.iloc[1]["category"] == "footwear"
+    assert result.iloc[1]["revenue"] == 1500.0
