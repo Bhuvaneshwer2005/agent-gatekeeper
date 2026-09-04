@@ -1,0 +1,24 @@
+.git/
+.claude/
+CLAUDE.md
+README.md
+
+**/__pycache__/
+**/*.pyc
+**/.pytest_cache/
+**/.venv/
+**/venv/
+**/*.egg-info/
+
+**/tests/
+
+# Secrets and local runtime data never belong in the image - the container
+# gets real credentials from host env vars, and the audit/mandate DBs are
+# created fresh at container start.
+backend/.env
+backend/data/
+
+.DS_Store
+Thumbs.db
+.vscode/
+.idea/

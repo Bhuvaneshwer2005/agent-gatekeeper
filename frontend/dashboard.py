@@ -1,5 +1,9 @@
-# Agent Gatekeeper dashboard: Trust panel + Growth panel + Live demo +
-# Stress test + Active Mandates.
+# Agent Gatekeeper dashboard: a homepage, then Trust panel + Growth panel +
+# Live demo + Stress test + Active Mandates once "Enter Dashboard" is
+# clicked. The homepage is gated behind one session_state flag rather than
+# a second Streamlit page, so the whole app stays one URL - the right
+# tradeoff for a single-container deploy where there's no router in front
+# of it to send /home and /app to different places.
 #
 # Trust and Growth read the same audit log (Step 8) - there's no separate
 # data path for either one, so what they show is exactly what happened, not
@@ -30,6 +34,7 @@ from audit_view import (
     with_status_columns,
 )
 from growth_view import compute_growth_metrics, load_catalog_prices, revenue_by_category, top_upsells
+from homepage_view import APP_NAME, CTA_LABEL, FEATURES, FLOW_STEPS, PITCH, TAGLINE
 from live_demo_view import BLOCKED, OK, derive_steps, fetch_catalog, fetch_scenarios, outcome_summary, run_scenario
 from mandate_registry_view import fetch_mandates, issue_mandate, status_icon, summarize_mandates
 from stress_test_view import (
@@ -49,12 +54,66 @@ CATALOG_PATH = Path(os.environ.get("CATALOG_PATH", DEFAULT_CATALOG_PATH))
 
 BACKEND_URL = os.environ.get("AGENT_GATEKEEPER_BASE_URL", "http://localhost:8000")
 
-st.set_page_config(page_title="Agent Gatekeeper", page_icon="\U0001F6E1", layout="wide")
+st.set_page_config(page_title=APP_NAME, page_icon="\U0001F6E1", layout="wide")
 
-st.title("Agent Gatekeeper")
 
-if st.button("\U0001F504 Refresh"):
-    st.rerun()
+def render_homepage() -> None:
+    # A landing page, not another tab: a visitor sees what this is and why
+    # before being dropped into five tabs of live application state. The
+    # only state involved is a single flag, flipped by the CTA button, so
+    # there's nothing here for the pure-data homepage_view module to own.
+    st.markdown(
+        f"<h1 style='text-align: center; margin-bottom: 0;'>\U0001F6E1 {APP_NAME}</h1>",
+        unsafe_allow_html=True,
+    )
+    st.markdown(f"<p style='text-align: center; font-size: 1.2rem;'>{TAGLINE}</p>", unsafe_allow_html=True)
+
+    _, pitch_col, _ = st.columns([1, 3, 1])
+    with pitch_col:
+        st.markdown(f"<p style='text-align: center;'>{PITCH}</p>", unsafe_allow_html=True)
+
+    st.write("")
+    flow_columns = st.columns(len(FLOW_STEPS))
+    for column, step, connector in zip(flow_columns, FLOW_STEPS, [True, True, False]):
+        with column:
+            st.markdown(
+                f"<div style='text-align: center; font-size: 2rem;'>{step['icon']}</div>"
+                f"<h4 style='text-align: center;'>{step['title']}</h4>"
+                f"<p style='text-align: center; font-size: 0.9rem; color: gray;'>{step['detail']}</p>",
+                unsafe_allow_html=True,
+            )
+
+    st.divider()
+    st.markdown("<h3 style='text-align: center;'>What it does</h3>", unsafe_allow_html=True)
+    feature_columns = st.columns(len(FEATURES))
+    for column, feature in zip(feature_columns, FEATURES):
+        with column:
+            st.markdown(f"#### {feature['icon']} {feature['title']}")
+            st.caption(feature["detail"])
+
+    st.write("")
+    st.write("")
+    _, cta_col, _ = st.columns([2, 1, 2])
+    with cta_col:
+        if st.button(CTA_LABEL, use_container_width=True, type="primary"):
+            st.session_state["entered_app"] = True
+            st.rerun()
+
+
+if not st.session_state.get("entered_app", False):
+    render_homepage()
+    st.stop()
+
+st.title(APP_NAME)
+
+home_col, refresh_col = st.columns([1, 11])
+with home_col:
+    if st.button("\U0001F3E0", help="Back to homepage"):
+        st.session_state["entered_app"] = False
+        st.rerun()
+with refresh_col:
+    if st.button("\U0001F504 Refresh"):
+        st.rerun()
 
 df = load_audit_log(DB_PATH)
 

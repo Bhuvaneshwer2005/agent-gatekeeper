@@ -1,0 +1,19 @@
+# Render "Blueprint" - lets Render provision this service straight from
+# the Dockerfile with one click (New + -> Blueprint -> pick this repo)
+# instead of clicking through the manual web-service form.
+# GROQ_API_KEY / RAZORPAY_KEY_ID / RAZORPAY_KEY_SECRET are marked sync:
+# false so Render prompts for them in the dashboard instead of expecting
+# them in this committed file - they must never be checked into git.
+services:
+  - type: web
+    name: agent-gatekeeper
+    runtime: docker
+    plan: free
+    dockerfilePath: ./Dockerfile
+    envVars:
+      - key: GROQ_API_KEY
+        sync: false
+      - key: RAZORPAY_KEY_ID
+        sync: false
+      - key: RAZORPAY_KEY_SECRET
+        sync: false
