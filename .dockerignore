@@ -14,9 +14,13 @@ README.md
 
 # Secrets and local runtime data never belong in the image - the container
 # gets real credentials from host env vars, and the audit/mandate DBs are
-# created fresh at container start.
+# created fresh at container start. Only the *.db files themselves are
+# runtime state - backend/data/ also holds catalog.json, a static source
+# file the image must ship with (excluding the whole directory here once
+# broke every endpoint that reads the catalog: /catalog, /scenarios,
+# /stress-cases all 500'd with FileNotFoundError on a fresh deploy).
 backend/.env
-backend/data/
+backend/data/*.db
 
 .DS_Store
 Thumbs.db
