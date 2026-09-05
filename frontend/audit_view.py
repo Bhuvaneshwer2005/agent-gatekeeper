@@ -13,12 +13,6 @@ STATUS_APPROVED = "Approved"
 STATUS_UPSOLD = "Upsold"
 STATUS_REFUSED = "Refused"
 
-STATUS_ICONS = {
-    STATUS_APPROVED: "✅",  # checkmark
-    STATUS_UPSOLD: "\U0001F53C",  # up arrow
-    STATUS_REFUSED: "❌",  # cross mark
-}
-
 STATUS_COLORS = {
     STATUS_APPROVED: "#e6f4ea",
     STATUS_UPSOLD: "#e8eefc",
@@ -73,13 +67,16 @@ def classify_status(validation_approved, upsell_sku) -> str:
 
 
 def with_status_columns(df: pd.DataFrame) -> pd.DataFrame:
-    """Add Status and Icon columns derived from the raw audit log columns."""
+    """Add a Status column derived from the raw audit log columns.
+
+    No separate icon column - status is conveyed by the text itself plus
+    the row's background color (highlight_by_status), not an emoji glyph.
+    """
     df = df.copy()
     df["Status"] = [
         classify_status(approved, sku)
         for approved, sku in zip(df["validation_approved"], df["upsell_sku"])
     ]
-    df["Icon"] = df["Status"].map(STATUS_ICONS)
     return df
 
 

@@ -41,9 +41,10 @@ from growth_view import (
     revenue_by_category,
     top_upsells,
 )
-from homepage_view import APP_NAME, CTA_LABEL, FEATURES, FLOW_STEPS, PITCH, TAGLINE
+from homepage_view import APP_NAME, CTA_LABEL, FEATURES, FLOW_STEPS, PITCH, PLATFORM_FEATURES, TAGLINE
+from icons import icon, icon_inline
 from live_demo_view import BLOCKED, OK, derive_steps, fetch_catalog, fetch_scenarios, outcome_summary, run_scenario
-from mandate_registry_view import fetch_mandates, issue_mandate, status_icon, summarize_mandates
+from mandate_registry_view import fetch_mandates, highlight_by_mandate_status, issue_mandate, summarize_mandates
 from stress_test_view import (
     FAILED,
     evaluate_case,
@@ -92,22 +93,6 @@ st.markdown(
         max-width: none !important;
     }
     .stButton>button { border-radius: 8px; font-weight: 600; }
-    /* Streamlit's default button padding (4px 12px) is sized for a text
-       label, not a single centered glyph - on a single-emoji button that
-       leaves the icon looking small and off-center rather than filling a
-       clean square. These two keyed buttons get their own fixed-size,
-       fully-centered treatment instead. */
-    div.st-key-home_button button, div.st-key-refresh_button button {
-        width: 44px !important;
-        height: 44px !important;
-        min-width: 44px !important;
-        padding: 0 !important;
-        font-size: 1.4rem !important;
-        line-height: 1 !important;
-        display: flex !important;
-        align-items: center !important;
-        justify-content: center !important;
-    }
     .hero-badge {
         display: inline-block;
         background: rgba(59,130,246,0.15);
@@ -211,7 +196,7 @@ def render_homepage() -> None:
             st.markdown(
                 f"""
                 <div class="flow-card">
-                  <div style="font-size:1.6rem;">{step['icon']}</div>
+                  <div>{icon(step['icon'], size=28, color="#7fb2ff")}</div>
                   <div style="font-weight:700; margin-top:0.5rem;">{step['title']}</div>
                   <div style="font-size:0.85rem; color:#9aa4b2; margin-top:0.35rem; line-height:1.5;">{step['detail']}</div>
                 </div>
@@ -229,7 +214,9 @@ def render_homepage() -> None:
             st.markdown(
                 f"""
                 <div class="feature-card">
-                  <div style="font-weight:700; margin-bottom:0.5rem;">{feature['icon']} {feature['title']}</div>
+                  <div style="font-weight:700; margin-bottom:0.5rem;">
+                    {icon_inline(feature['icon'], size=20, color="#7fb2ff")} {feature['title']}
+                  </div>
                   <div style="font-size:0.85rem; color:#9aa4b2; line-height:1.5;">{feature['detail']}</div>
                 </div>
                 """,
@@ -238,9 +225,38 @@ def render_homepage() -> None:
 
     st.write("")
     st.write("")
+    st.markdown("<h4 style='text-align:center;'>Explore the platform</h4>", unsafe_allow_html=True)
+    st.markdown(
+        "<p style='text-align:center; color:#9aa4b2; font-size:0.9rem;'>"
+        "Five live tabs once you're in - not a mockup.</p>",
+        unsafe_allow_html=True,
+    )
+    st.write("")
+    platform_row_1 = st.columns(3)
+    platform_row_2 = st.columns(2)
+    platform_columns = platform_row_1 + platform_row_2
+    for column, feature in zip(platform_columns, PLATFORM_FEATURES):
+        with column:
+            st.markdown(
+                f"""
+                <div class="feature-card">
+                  <div style="font-weight:700; margin-bottom:0.5rem;">
+                    {icon_inline(feature['icon'], size=20, color="#7fb2ff")} {feature['title']}
+                  </div>
+                  <div style="font-size:0.85rem; color:#9aa4b2; line-height:1.5;">{feature['detail']}</div>
+                </div>
+                """,
+                unsafe_allow_html=True,
+            )
+        # The 2-card second row is centered under the 3-card first row by
+        # simply not using the 3rd/4th/5th slot - st.columns(2) already
+        # centers itself in the block, so nothing extra is needed here.
+
+    st.write("")
+    st.write("")
     _, cta_col, _ = st.columns([2, 1, 2])
     with cta_col:
-        if st.button(CTA_LABEL, use_container_width=True, type="primary"):
+        if st.button(CTA_LABEL, icon=":material/arrow_forward:", use_container_width=True, type="primary"):
             st.session_state["entered_app"] = True
             st.rerun()
 
@@ -249,35 +265,31 @@ if not st.session_state.get("entered_app", False):
     render_homepage()
     st.stop()
 
-header_left, header_home, header_refresh = st.columns([8, 1, 1])
+header_left, header_home, header_refresh = st.columns([6, 1.5, 1.5])
 with header_left:
     st.markdown(f"<h2 style='margin-bottom:0;'>{APP_NAME}</h2>", unsafe_allow_html=True)
 with header_home:
-    # No use_container_width here on purpose - forcing these two small
-    # icon buttons to stretch or shrink to fit a narrow column is exactly
-    # what clipped them on a real screen; left at their natural size, the
-    # column just needs to be wide enough to hold them, not the other way
-    # around. The `key` gives Streamlit's own st-key-<key> class on the
-    # wrapping element, which the CSS below uses to turn just these two
-    # into proper square icon buttons - Streamlit's default button padding
-    # is sized for text, not a single centered glyph, which read as an
-    # oddly-placed, cramped icon rather than an actual clipped one.
-    if st.button("\U0001F3E0", help="Back to homepage", key="home_button"):
+    # A real label plus a Material Symbols icon (Streamlit's own built-in
+    # vector icon set - the only icon option st.button supports besides a
+    # plain emoji) rather than an icon-only glyph: a labeled button sizes
+    # itself normally, so there's no cramped icon-in-a-tiny-box look to
+    # fight with CSS in the first place.
+    if st.button("Home", icon=":material/home:", key="home_button", use_container_width=True):
         st.session_state["entered_app"] = False
         st.rerun()
 with header_refresh:
-    if st.button("\U0001F504", help="Refresh", key="refresh_button"):
+    if st.button("Refresh", icon=":material/refresh:", key="refresh_button", use_container_width=True):
         st.rerun()
 
 df = load_audit_log(DB_PATH)
 
 trust_tab, growth_tab, demo_tab, stress_tab, mandates_tab = st.tabs(
     [
-        "\U0001F6E1 Trust Panel",
-        "\U0001F4C8 Growth Panel",
-        "\U000025B6 Live Demo",
-        "\U0001F9EA Stress Test",
-        "\U0001F5C2 Active Mandates",
+        ":material/shield: Trust Panel",
+        ":material/trending_up: Growth Panel",
+        ":material/play_circle: Live Demo",
+        ":material/science: Stress Test",
+        ":material/folder_open: Active Mandates",
     ]
 )
 
@@ -292,7 +304,7 @@ with trust_tab:
             "No decisions logged yet. Run the five demo scenarios below to seed the audit "
             "log, or run `python scripts/buyer_agent_simulator.py` from `backend/` yourself."
         )
-        if st.button("\U000025B6 Run demo scenarios", key="seed_demo_data_trust"):
+        if st.button("Run demo scenarios", icon=":material/play_arrow:", key="seed_demo_data_trust"):
             try:
                 seed_scenarios = fetch_scenarios(BACKEND_URL)
             except Exception as exc:
@@ -323,7 +335,6 @@ with trust_tab:
 
         display_df = trust_df[
             [
-                "Icon",
                 "Status",
                 "created_at",
                 "buyer_id",
@@ -681,8 +692,12 @@ with demo_tab:
             with gate_column:
                 st.subheader("Gatekeeper does")
                 for step in derive_steps(decision):
-                    icon = {OK: "\u2705", BLOCKED: "\u274C"}.get(step["status"], "\u2022")
-                    st.markdown(f"{icon} {step['label']}")
+                    step_icon = {OK: "check-circle", BLOCKED: "x-circle"}.get(step["status"], "info-circle")
+                    step_color = {OK: "#4ade80", BLOCKED: "#f87171"}.get(step["status"], "#9aa4b2")
+                    st.markdown(
+                        f"{icon_inline(step_icon, size=16, color=step_color)} {step['label']}",
+                        unsafe_allow_html=True,
+                    )
                     if step["detail"]:
                         st.caption(step["detail"])
 
@@ -730,7 +745,7 @@ with stress_tab:
             "like any other, since nothing here bypasses the audit log."
         )
 
-        if st.button("\U0001F9EA Run stress test", key="run_stress_test", use_container_width=True):
+        if st.button("Run stress test", icon=":material/science:", key="run_stress_test", use_container_width=True):
             progress_placeholder = st.empty()
             status_placeholder = st.empty()
             results = []
@@ -833,7 +848,7 @@ with stress_tab:
         cases_table = pd.DataFrame(
             [
                 {
-                    "Result": "✅ passed" if r["status"] != FAILED else "❌ failed",
+                    "Result": "Passed" if r["status"] != FAILED else "Failed",
                     "Case ID": r["case"]["id"],
                     "Group": GROUP_LABELS.get(r["case"]["group"], r["case"]["group"]),
                     "Expected": expected_outcome(r["case"]),
@@ -842,7 +857,14 @@ with stress_tab:
                 for r in stress_results
             ]
         )
-        st.dataframe(cases_table, use_container_width=True, hide_index=True)
+
+        def highlight_by_result(row):
+            color = "#e6f4ea" if row.get("Result") == "Passed" else "#fdecea"
+            return [f"background-color: {color}; color: #111111"] * len(row)
+
+        st.dataframe(
+            cases_table.style.apply(highlight_by_result, axis=1), use_container_width=True, hide_index=True
+        )
 
         st.subheader("Inspect a case")
         case_lookup = {r["case"]["id"]: r for r in stress_results}
@@ -850,7 +872,7 @@ with stress_tab:
             "Case",
             list(case_lookup.keys()),
             format_func=lambda case_id: (
-                f"{'✅' if case_lookup[case_id]['status'] != FAILED else '❌'} {case_id}"
+                f"{'Passed' if case_lookup[case_id]['status'] != FAILED else 'Failed'} - {case_id}"
             ),
             key="inspect_stress_case",
         )
@@ -944,12 +966,12 @@ with mandates_tab:
     else:
         status_counts = summarize_mandates(all_mandates)
         count_col1, count_col2, count_col3 = st.columns(3)
-        count_col1.metric(f"{status_icon('active')} Active", status_counts["active"])
-        count_col2.metric(f"{status_icon('exhausted')} Exhausted", status_counts["exhausted"])
-        count_col3.metric(f"{status_icon('expired')} Expired", status_counts["expired"])
+        count_col1.metric("Active", status_counts["active"])
+        count_col2.metric("Exhausted", status_counts["exhausted"])
+        count_col3.metric("Expired", status_counts["expired"])
 
         mandates_df = pd.DataFrame(all_mandates)
-        mandates_df["Status"] = mandates_df["status"].map(lambda s: f"{status_icon(s)} {s}")
+        mandates_df["Status"] = mandates_df["status"].str.capitalize()
         mandates_df["Categories"] = mandates_df["category_allowlist"].map(", ".join)
         for money_col in ("budget_max", "budget_spent", "budget_remaining"):
             mandates_df[money_col] = mandates_df[money_col].map(lambda v: f"₹{v:,.2f}")
@@ -966,4 +988,7 @@ with mandates_tab:
                 "expiry": "Expires",
             }
         )
-        st.dataframe(display_mandates, use_container_width=True, hide_index=True)
+        # Same background-color-by-status treatment as the Trust panel,
+        # keyed on the Status column right there in the displayed table.
+        styled_mandates = display_mandates.style.apply(highlight_by_mandate_status, axis=1)
+        st.dataframe(styled_mandates, use_container_width=True, hide_index=True)

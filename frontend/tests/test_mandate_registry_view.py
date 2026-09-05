@@ -3,15 +3,23 @@
 # fetch_scenarios/run_scenario in live_demo_view.py, and untested at the
 # unit level for the same reason those are.
 
-from mandate_registry_view import status_icon, summarize_mandates
+import pandas as pd
+
+from mandate_registry_view import highlight_by_mandate_status, summarize_mandates
 
 
-def test_status_icon_known_statuses():
-    assert status_icon("active") != status_icon("exhausted") != status_icon("expired")
+def test_highlight_by_mandate_status_gives_each_status_its_own_color():
+    rows = pd.DataFrame([{"Status": "Active"}, {"Status": "Exhausted"}, {"Status": "Expired"}])
+    colors = {row["Status"]: highlight_by_mandate_status(row)[0] for _, row in rows.iterrows()}
+
+    assert colors["Active"] != colors["Exhausted"]
+    assert colors["Active"] != colors["Expired"]
+    assert colors["Exhausted"] != colors["Expired"]
 
 
-def test_status_icon_falls_back_for_unknown_status():
-    assert status_icon("something-new") == "⚪"
+def test_highlight_by_mandate_status_falls_back_for_unknown_status():
+    row = pd.Series({"Status": "Something else"})
+    assert highlight_by_mandate_status(row) == [""]
 
 
 def test_summarize_mandates_counts_each_status():
