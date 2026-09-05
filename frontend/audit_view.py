@@ -29,13 +29,25 @@ STATUS_COLORS = {
 def load_audit_log(db_path: Union[str, Path]) -> pd.DataFrame:
     """Read every row of the audit log, newest first.
 
-    Returns an empty DataFrame if the database file doesn't exist yet -
-    that just means /decide hasn't been called by anything, not an error.
+    Returns an empty DataFrame if the database file doesn't exist yet, or
+    if it exists but has no audit_log table yet - both just mean /decide
+    hasn't been called by anything, not an error. The second case is real:
+    this file also holds the mandate registry and stress-run tables, each
+    created independently by its own backend module on first use, so a
+    fresh deployment can end up with an audit_log.db that has a mandates
+    table (someone opened the Active Mandates tab first) but no audit_log
+    table yet (nothing has gone through /decide). A bare file-existence
+    check can't tell those two apart.
     """
     db_path = Path(db_path)
     if not db_path.exists():
         return pd.DataFrame()
     with sqlite3.connect(db_path) as connection:
+        table_exists = connection.execute(
+            "SELECT name FROM sqlite_master WHERE type='table' AND name='audit_log'"
+        ).fetchone()
+        if table_exists is None:
+            return pd.DataFrame()
         return pd.read_sql_query("SELECT * FROM audit_log ORDER BY id DESC", connection)
 
 

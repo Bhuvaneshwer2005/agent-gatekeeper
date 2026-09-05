@@ -71,6 +71,23 @@ def test_load_audit_log_returns_empty_dataframe_when_db_missing(tmp_path):
     assert df.empty
 
 
+def test_load_audit_log_returns_empty_dataframe_when_file_exists_but_table_does_not(tmp_path):
+    # Regression test: the db file is shared with the mandate registry and
+    # stress-run tables, each created independently on first use. On a
+    # fresh deployment, another tab's backend call can create this file
+    # with one of those tables before /decide has ever run - so the file
+    # existing is not proof the audit_log table does. Caught live on a
+    # fresh Render deploy where the Trust panel crashed with
+    # "no such table: audit_log" despite the db file being present.
+    db_path = tmp_path / "audit.db"
+    with sqlite3.connect(db_path) as connection:
+        connection.execute("CREATE TABLE mandates (mandate_id TEXT PRIMARY KEY)")
+        connection.commit()
+
+    df = load_audit_log(db_path)
+    assert df.empty
+
+
 def test_load_audit_log_reads_rows_newest_first(tmp_path):
     db_path = tmp_path / "audit.db"
     seed_db(db_path, [APPROVED_ROW, UPSOLD_ROW])
