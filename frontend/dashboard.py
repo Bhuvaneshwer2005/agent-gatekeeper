@@ -92,6 +92,22 @@ st.markdown(
         max-width: none !important;
     }
     .stButton>button { border-radius: 8px; font-weight: 600; }
+    /* Streamlit's default button padding (4px 12px) is sized for a text
+       label, not a single centered glyph - on a single-emoji button that
+       leaves the icon looking small and off-center rather than filling a
+       clean square. These two keyed buttons get their own fixed-size,
+       fully-centered treatment instead. */
+    div.st-key-home_button button, div.st-key-refresh_button button {
+        width: 44px !important;
+        height: 44px !important;
+        min-width: 44px !important;
+        padding: 0 !important;
+        font-size: 1.4rem !important;
+        line-height: 1 !important;
+        display: flex !important;
+        align-items: center !important;
+        justify-content: center !important;
+    }
     .hero-badge {
         display: inline-block;
         background: rgba(59,130,246,0.15);
@@ -241,12 +257,16 @@ with header_home:
     # icon buttons to stretch or shrink to fit a narrow column is exactly
     # what clipped them on a real screen; left at their natural size, the
     # column just needs to be wide enough to hold them, not the other way
-    # around.
-    if st.button("\U0001F3E0", help="Back to homepage"):
+    # around. The `key` gives Streamlit's own st-key-<key> class on the
+    # wrapping element, which the CSS below uses to turn just these two
+    # into proper square icon buttons - Streamlit's default button padding
+    # is sized for text, not a single centered glyph, which read as an
+    # oddly-placed, cramped icon rather than an actual clipped one.
+    if st.button("\U0001F3E0", help="Back to homepage", key="home_button"):
         st.session_state["entered_app"] = False
         st.rerun()
 with header_refresh:
-    if st.button("\U0001F504", help="Refresh"):
+    if st.button("\U0001F504", help="Refresh", key="refresh_button"):
         st.rerun()
 
 df = load_audit_log(DB_PATH)
