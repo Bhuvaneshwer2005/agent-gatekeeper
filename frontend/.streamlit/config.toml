@@ -1,0 +1,12 @@
+# A deliberate theme instead of Streamlit's own defaults - one accent
+# color, one dark palette, applied consistently to every widget (buttons,
+# tabs, inputs, sliders) without touching a single line of app code.
+# Picked to read as a fintech trust product (deep slate + a single blue
+# accent), not a generic dark-mode default.
+[theme]
+base = "dark"
+primaryColor = "#3B82F6"
+backgroundColor = "#0B0F19"
+secondaryBackgroundColor = "#141B2D"
+textColor = "#E5E9F0"
+font = "sans serif"

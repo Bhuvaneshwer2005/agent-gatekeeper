@@ -56,6 +56,53 @@ BACKEND_URL = os.environ.get("AGENT_GATEKEEPER_BASE_URL", "http://localhost:8000
 
 st.set_page_config(page_title=APP_NAME, page_icon="\U0001F6E1", layout="wide")
 
+# Global polish on top of the custom theme in .streamlit/config.toml - card
+# treatment for metrics and the homepage's own feature/flow blocks, tighter
+# default padding, and a consistent border radius. Selectors like
+# data-testid="stMetric" are Streamlit's own internal DOM hooks: if a given
+# Streamlit version doesn't have them, the rule just never matches (a CSS
+# selector miss is silent, unlike a Python kwarg mismatch), so this can't
+# break the app on an older Streamlit the way a real API change could.
+st.markdown(
+    """
+    <style>
+    .block-container { padding-top: 2.5rem; padding-bottom: 3rem; max-width: 1150px; }
+    div[data-testid="stMetric"] {
+        background: rgba(255,255,255,0.035);
+        border: 1px solid rgba(255,255,255,0.09);
+        border-radius: 10px;
+        padding: 0.9rem 0.8rem;
+    }
+    div[data-testid="stMetricLabel"] { overflow: visible; }
+    div[data-testid="stMetricLabel"] > div {
+        overflow: visible;
+        white-space: normal;
+        text-overflow: unset;
+    }
+    .stButton>button { border-radius: 8px; font-weight: 600; }
+    .hero-badge {
+        display: inline-block;
+        background: rgba(59,130,246,0.15);
+        color: #7fb2ff;
+        border: 1px solid rgba(59,130,246,0.35);
+        border-radius: 999px;
+        padding: 0.25rem 0.9rem;
+        font-size: 0.8rem;
+        font-weight: 600;
+        letter-spacing: 0.03em;
+    }
+    .flow-card, .feature-card {
+        background: rgba(255,255,255,0.035);
+        border: 1px solid rgba(255,255,255,0.09);
+        border-radius: 12px;
+        padding: 1.3rem 1.2rem;
+        height: 100%;
+    }
+    </style>
+    """,
+    unsafe_allow_html=True,
+)
+
 
 def render_homepage() -> None:
     # A landing page, not another tab: a visitor sees what this is and why
@@ -63,33 +110,58 @@ def render_homepage() -> None:
     # only state involved is a single flag, flipped by the CTA button, so
     # there's nothing here for the pure-data homepage_view module to own.
     st.markdown(
-        f"<h1 style='text-align: center; margin-bottom: 0;'>\U0001F6E1 {APP_NAME}</h1>",
+        "<div style='text-align:center; margin-top:0.5rem;'>"
+        "<span class='hero-badge'>MERCHANT TRUST LAYER</span></div>",
         unsafe_allow_html=True,
     )
-    st.markdown(f"<p style='text-align: center; font-size: 1.2rem;'>{TAGLINE}</p>", unsafe_allow_html=True)
+    st.markdown(
+        f"<h1 style='text-align:center; margin:0.7rem 0 0.2rem;'>{APP_NAME}</h1>",
+        unsafe_allow_html=True,
+    )
+    st.markdown(
+        f"<p style='text-align:center; font-size:1.15rem; color:#9aa4b2; margin-bottom:1.6rem;'>{TAGLINE}</p>",
+        unsafe_allow_html=True,
+    )
 
     _, pitch_col, _ = st.columns([1, 3, 1])
     with pitch_col:
-        st.markdown(f"<p style='text-align: center;'>{PITCH}</p>", unsafe_allow_html=True)
+        st.markdown(
+            f"<p style='line-height:1.65; color:#c7ccd6;'>{PITCH}</p>",
+            unsafe_allow_html=True,
+        )
 
     st.write("")
+    st.write("")
     flow_columns = st.columns(len(FLOW_STEPS))
-    for column, step, connector in zip(flow_columns, FLOW_STEPS, [True, True, False]):
+    for column, step in zip(flow_columns, FLOW_STEPS):
         with column:
             st.markdown(
-                f"<div style='text-align: center; font-size: 2rem;'>{step['icon']}</div>"
-                f"<h4 style='text-align: center;'>{step['title']}</h4>"
-                f"<p style='text-align: center; font-size: 0.9rem; color: gray;'>{step['detail']}</p>",
+                f"""
+                <div class="flow-card">
+                  <div style="font-size:1.6rem;">{step['icon']}</div>
+                  <div style="font-weight:700; margin-top:0.5rem;">{step['title']}</div>
+                  <div style="font-size:0.85rem; color:#9aa4b2; margin-top:0.35rem; line-height:1.5;">{step['detail']}</div>
+                </div>
+                """,
                 unsafe_allow_html=True,
             )
 
-    st.divider()
-    st.markdown("<h3 style='text-align: center;'>What it does</h3>", unsafe_allow_html=True)
+    st.write("")
+    st.write("")
+    st.markdown("<h4 style='text-align:center;'>What it does</h4>", unsafe_allow_html=True)
+    st.write("")
     feature_columns = st.columns(len(FEATURES))
     for column, feature in zip(feature_columns, FEATURES):
         with column:
-            st.markdown(f"#### {feature['icon']} {feature['title']}")
-            st.caption(feature["detail"])
+            st.markdown(
+                f"""
+                <div class="feature-card">
+                  <div style="font-weight:700; margin-bottom:0.5rem;">{feature['icon']} {feature['title']}</div>
+                  <div style="font-size:0.85rem; color:#9aa4b2; line-height:1.5;">{feature['detail']}</div>
+                </div>
+                """,
+                unsafe_allow_html=True,
+            )
 
     st.write("")
     st.write("")
@@ -104,15 +176,15 @@ if not st.session_state.get("entered_app", False):
     render_homepage()
     st.stop()
 
-st.title(APP_NAME)
-
-home_col, refresh_col = st.columns([1, 11])
-with home_col:
-    if st.button("\U0001F3E0", help="Back to homepage"):
+header_left, header_home, header_refresh = st.columns([10, 1, 1])
+with header_left:
+    st.markdown(f"<h2 style='margin-bottom:0;'>{APP_NAME}</h2>", unsafe_allow_html=True)
+with header_home:
+    if st.button("\U0001F3E0", help="Back to homepage", use_container_width=True):
         st.session_state["entered_app"] = False
         st.rerun()
-with refresh_col:
-    if st.button("\U0001F504 Refresh"):
+with header_refresh:
+    if st.button("\U0001F504", help="Refresh", use_container_width=True):
         st.rerun()
 
 df = load_audit_log(DB_PATH)
