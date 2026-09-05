@@ -24,6 +24,20 @@ from pathlib import Path
 from typing import Dict, Optional, Union
 
 import pandas as pd
+import plotly.graph_objects as go
+
+# Shared chart styling so every Growth panel figure reads as one system -
+# transparent backgrounds (so the app's own theme shows through, not
+# Plotly's default white canvas), the same accent colors as the rest of
+# the dashboard, and light text for the dark theme.
+CHART_LAYOUT = dict(
+    paper_bgcolor="rgba(0,0,0,0)",
+    plot_bgcolor="rgba(0,0,0,0)",
+    font=dict(color="#E5E9F0"),
+    margin=dict(l=10, r=10, t=10, b=10),
+    showlegend=False,
+)
+GRID_COLOR = "rgba(255,255,255,0.08)"
 
 
 def load_catalog_prices(catalog_path: Union[str, Path]) -> Dict[str, float]:
@@ -110,3 +124,69 @@ def revenue_by_category(df: pd.DataFrame) -> pd.DataFrame:
     grouped = approved.groupby("category")["transaction_amount"].sum().reset_index()
     grouped.columns = ["category", "revenue"]
     return grouped.sort_values("revenue", ascending=False).reset_index(drop=True)
+
+
+def build_aov_comparison_chart(metrics: dict) -> go.Figure:
+    """Actual vs. projected AOV as a real bar chart - proper axis, hover
+    values, and value labels - instead of two hand-rolled HTML divs.
+
+    Plotly rather than st.bar_chart(): the latter goes through the altair
+    package internally, and this project already hit a real crash there -
+    an old Streamlit paired with a newer Python broke on altair's own
+    TypedDict(closed=True) schema definitions. Plotly is an independent
+    charting library with no altair dependency, so it doesn't share that
+    failure mode.
+    """
+    labels = ["Actual", "Projected w/ upsells"]
+    values = [metrics["baseline_aov"], metrics["projected_aov"]]
+    fig = go.Figure(
+        data=[
+            go.Bar(
+                x=labels,
+                y=values,
+                marker_color=["#3B82F6", "#22C55E"],
+                text=[f"₹{v:,.2f}" for v in values],
+                textposition="outside",
+                hovertemplate="%{x}: ₹%{y:,.2f}<extra></extra>",
+            )
+        ]
+    )
+    fig.update_layout(
+        **CHART_LAYOUT,
+        height=280,
+        yaxis=dict(title="AOV (INR)", gridcolor=GRID_COLOR, rangemode="tozero"),
+        xaxis=dict(gridcolor=GRID_COLOR),
+    )
+    return fig
+
+
+def build_revenue_by_category_chart(by_category: pd.DataFrame) -> go.Figure:
+    """Revenue by category as a horizontal bar chart, highest first.
+
+    Horizontal rather than vertical: category names read better on their
+    own row than rotated or truncated under a vertical bar, especially
+    once the catalog has more than a couple of categories.
+    """
+    fig = go.Figure(
+        data=[
+            go.Bar(
+                x=by_category["revenue"],
+                y=by_category["category"],
+                orientation="h",
+                marker_color="#3B82F6",
+                text=[f"₹{v:,.2f}" for v in by_category["revenue"]],
+                textposition="outside",
+                hovertemplate="%{y}: ₹%{x:,.2f}<extra></extra>",
+            )
+        ]
+    )
+    fig.update_layout(
+        **CHART_LAYOUT,
+        height=max(220, 55 * len(by_category)),
+        xaxis=dict(title="Revenue (INR)", gridcolor=GRID_COLOR, rangemode="tozero"),
+        # Reversed so the highest-revenue category (first row, since the
+        # caller already sorts descending) renders at the top, matching
+        # reading order instead of Plotly's bottom-up default for bars.
+        yaxis=dict(autorange="reversed", gridcolor=GRID_COLOR),
+    )
+    return fig

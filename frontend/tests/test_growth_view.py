@@ -6,7 +6,14 @@ import sqlite3
 import pandas as pd
 
 from audit_view import load_audit_log
-from growth_view import compute_growth_metrics, load_catalog_prices, revenue_by_category, top_upsells
+from growth_view import (
+    build_aov_comparison_chart,
+    build_revenue_by_category_chart,
+    compute_growth_metrics,
+    load_catalog_prices,
+    revenue_by_category,
+    top_upsells,
+)
 
 SCHEMA = """
 CREATE TABLE audit_log (
@@ -205,3 +212,24 @@ def test_revenue_by_category_sums_and_sorts_descending():
     assert result.iloc[0]["revenue"] == 8999.0
     assert result.iloc[1]["category"] == "footwear"
     assert result.iloc[1]["revenue"] == 1500.0
+
+
+def test_aov_comparison_chart_plots_actual_and_projected_values():
+    metrics = {"baseline_aov": 1000.0, "projected_aov": 1200.0}
+    fig = build_aov_comparison_chart(metrics)
+
+    assert len(fig.data) == 1
+    bar = fig.data[0]
+    assert list(bar.x) == ["Actual", "Projected w/ upsells"]
+    assert list(bar.y) == [1000.0, 1200.0]
+
+
+def test_revenue_by_category_chart_plots_one_bar_per_category_highest_first():
+    by_category = pd.DataFrame([{"category": "electronics", "revenue": 8999.0}, {"category": "footwear", "revenue": 1500.0}])
+    fig = build_revenue_by_category_chart(by_category)
+
+    assert len(fig.data) == 1
+    bar = fig.data[0]
+    assert list(bar.y) == ["electronics", "footwear"]
+    assert list(bar.x) == [8999.0, 1500.0]
+    assert fig.layout.yaxis.autorange == "reversed"

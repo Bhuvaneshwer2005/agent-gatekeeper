@@ -33,7 +33,14 @@ from audit_view import (
     load_audit_log,
     with_status_columns,
 )
-from growth_view import compute_growth_metrics, load_catalog_prices, revenue_by_category, top_upsells
+from growth_view import (
+    build_aov_comparison_chart,
+    build_revenue_by_category_chart,
+    compute_growth_metrics,
+    load_catalog_prices,
+    revenue_by_category,
+    top_upsells,
+)
 from homepage_view import APP_NAME, CTA_LABEL, FEATURES, FLOW_STEPS, PITCH, TAGLINE
 from live_demo_view import BLOCKED, OK, derive_steps, fetch_catalog, fetch_scenarios, outcome_summary, run_scenario
 from mandate_registry_view import fetch_mandates, issue_mandate, status_icon, summarize_mandates
@@ -73,11 +80,16 @@ st.markdown(
         border-radius: 10px;
         padding: 0.9rem 0.8rem;
     }
-    div[data-testid="stMetricLabel"] { overflow: visible; }
-    div[data-testid="stMetricLabel"] > div {
-        overflow: visible;
-        white-space: normal;
-        text-overflow: unset;
+    /* !important throughout: Streamlit's own stylesheet sets the metric
+       label to a single truncated line, and it's a toss-up whether that
+       rule or this one wins the cascade on any given Streamlit version -
+       !important makes sure this one always does. */
+    div[data-testid="stMetricLabel"],
+    div[data-testid="stMetricLabel"] * {
+        overflow: visible !important;
+        white-space: normal !important;
+        text-overflow: unset !important;
+        max-width: none !important;
     }
     .stButton>button { border-radius: 8px; font-weight: 600; }
     .hero-badge {
@@ -98,10 +110,55 @@ st.markdown(
         padding: 1.3rem 1.2rem;
         height: 100%;
     }
+    /* A metric card built from plain HTML, not st.metric - used wherever
+       a label is long enough that Streamlit's own metric component
+       truncates it (its label truncation turned out to be enforced in a
+       way no CSS override could reach, not just a text-overflow rule). */
+    .custom-metric {
+        background: rgba(255,255,255,0.035);
+        border: 1px solid rgba(255,255,255,0.09);
+        border-radius: 10px;
+        padding: 0.9rem 1rem;
+        height: 100%;
+    }
+    .custom-metric .cm-label { font-size: 0.875rem; color: #9aa4b2; line-height: 1.3; margin-bottom: 0.35rem; }
+    .custom-metric .cm-value { font-size: 1.9rem; font-weight: 600; line-height: 1.2; }
+    .custom-metric .cm-delta {
+        display: inline-block; margin-top: 0.4rem; font-size: 0.8rem;
+        padding: 0.1rem 0.55rem; border-radius: 999px;
+    }
+    .custom-metric .cm-delta.positive { background: rgba(34,197,94,0.15); color: #4ade80; }
+    .custom-metric .cm-delta.negative { background: rgba(239,68,68,0.15); color: #f87171; }
     </style>
     """,
     unsafe_allow_html=True,
 )
+
+
+def render_metric_card(column, label: str, value: str, delta: str = None, help_text: str = None) -> None:
+    """A metric rendered as plain HTML instead of st.metric.
+
+    Used specifically where the label is long enough to hit Streamlit's
+    own metric-label truncation - that turned out to be enforced somewhere
+    CSS overrides couldn't reach, so this sidesteps st.metric entirely for
+    those cases rather than fighting it further.
+    """
+    delta_html = ""
+    if delta is not None:
+        sign_class = "positive" if delta.strip().startswith("+") else "negative" if delta.strip().startswith("-") else ""
+        delta_html = f'<div class="cm-delta {sign_class}">{delta}</div>'
+    help_html = f' <span title="{help_text}" style="cursor:help; opacity:0.55;">ⓘ</span>' if help_text else ""
+    with column:
+        st.markdown(
+            f"""
+            <div class="custom-metric">
+              <div class="cm-label">{label}{help_html}</div>
+              <div class="cm-value">{value}</div>
+              {delta_html}
+            </div>
+            """,
+            unsafe_allow_html=True,
+        )
 
 
 def render_homepage() -> None:
@@ -212,9 +269,24 @@ with trust_tab:
 
     if df.empty:
         st.info(
-            "No decisions logged yet. Start the backend and run "
-            "`python scripts/buyer_agent_simulator.py` from `backend/`, then refresh this page."
+            "No decisions logged yet. Run the five demo scenarios below to seed the audit "
+            "log, or run `python scripts/buyer_agent_simulator.py` from `backend/` yourself."
         )
+        if st.button("\U000025B6 Run demo scenarios", key="seed_demo_data_trust"):
+            try:
+                seed_scenarios = fetch_scenarios(BACKEND_URL)
+            except Exception as exc:
+                st.error(f"Can't reach the backend at {BACKEND_URL}: {exc}")
+            else:
+                seed_status = st.empty()
+                for index, scenario in enumerate(seed_scenarios):
+                    seed_status.caption(f"Running {index + 1}/{len(seed_scenarios)} - {scenario['name']}")
+                    try:
+                        run_scenario(BACKEND_URL, scenario)
+                    except Exception as exc:
+                        st.warning(f"`{scenario['name']}` failed: {exc}")
+                seed_status.empty()
+                st.rerun()
     else:
         trust_df = with_status_columns(df)
 
@@ -310,57 +382,32 @@ with growth_tab:
             st.info("No approved decisions yet - nothing has an order value to measure growth from.")
         else:
             col1, col2, col3, col4 = st.columns(4)
-            col1.metric("Approved orders", metrics["total_approved"])
-            col2.metric(
+            render_metric_card(col1, "Approved orders", str(metrics["total_approved"]))
+            render_metric_card(
+                col2,
                 "Upsell acceptance rate",
                 f"{metrics['acceptance_rate']:.0%}",
-                help=(
-                    "An upsell counts as accepted once the engine successfully "
-                    "proposes one that passes every guardrail in Step 6 - this "
-                    "build has no separate buyer confirmation step, so proposal "
-                    "and acceptance are the same event here."
+                help_text=(
+                    "An upsell counts as accepted once the engine successfully proposes one "
+                    "that passes every guardrail in Step 6 - this build has no separate buyer "
+                    "confirmation step, so proposal and acceptance are the same event here."
                 ),
             )
-            col3.metric("AOV (actual)", f"₹{metrics['baseline_aov']:,.2f}")
-            col4.metric(
+            render_metric_card(col3, "AOV (actual)", f"₹{metrics['baseline_aov']:,.2f}")
+            render_metric_card(
+                col4,
                 "AOV (projected w/ upsells)",
                 f"₹{metrics['projected_aov']:,.2f}",
                 delta=f"{metrics['aov_lift_pct']:+.1f}%",
-                help=(
-                    "Projected: what AOV would be if every proposed upsell had "
-                    "been bought. Step 7 never adds a proposed upsell to the "
-                    "actual Razorpay charge, so this is a measure of upside the "
-                    "upsell engine is surfacing, not revenue already captured."
+                help_text=(
+                    "Projected: what AOV would be if every proposed upsell had been bought. "
+                    "Step 7 never adds a proposed upsell to the actual Razorpay charge, so "
+                    "this is a measure of upside the upsell engine is surfacing, not revenue "
+                    "already captured."
                 ),
             )
 
-            # A hand-rolled HTML bar instead of st.bar_chart(): the latter
-            # imports altair internally, and an older Streamlit paired with
-            # a newer Python can hit a real incompatibility there (altair's
-            # schema uses TypedDict(closed=True), a typing feature not every
-            # Python/typing_extensions combo supports) - found live on a
-            # machine with Streamlit 1.40.1 on Python 3.14. Plain HTML has
-            # no such dependency and works on any Streamlit version.
-            max_aov = max(metrics["baseline_aov"], metrics["projected_aov"]) or 1
-            for label, value in (
-                ("Actual", metrics["baseline_aov"]),
-                ("Projected w/ upsells", metrics["projected_aov"]),
-            ):
-                bar_pct = value / max_aov * 100
-                st.markdown(
-                    f"""
-                    <div style="margin-bottom: 0.75rem;">
-                      <div style="font-size: 0.85rem; margin-bottom: 0.25rem;">{label}</div>
-                      <div style="background: rgba(128,128,128,0.25); border-radius: 4px; overflow: hidden;">
-                        <div style="background: #6c8ef5; width: {bar_pct:.1f}%; padding: 0.4rem 0.6rem;
-                                    color: white; font-size: 0.85rem; white-space: nowrap;">
-                          ₹{value:,.2f}
-                        </div>
-                      </div>
-                    </div>
-                    """,
-                    unsafe_allow_html=True,
-                )
+            st.plotly_chart(build_aov_comparison_chart(metrics), use_container_width=True)
 
             st.divider()
             top_col, category_col = st.columns(2)
@@ -382,23 +429,7 @@ with growth_tab:
                 if by_category.empty:
                     st.info("No approved orders yet.")
                 else:
-                    max_revenue = by_category["revenue"].max() or 1
-                    for _, row in by_category.iterrows():
-                        bar_pct = row["revenue"] / max_revenue * 100
-                        st.markdown(
-                            f"""
-                            <div style="margin-bottom: 0.6rem;">
-                              <div style="font-size: 0.85rem; margin-bottom: 0.2rem;">{row['category']}</div>
-                              <div style="background: rgba(128,128,128,0.25); border-radius: 4px; overflow: hidden;">
-                                <div style="background: #5fbf7f; width: {bar_pct:.1f}%; padding: 0.35rem 0.5rem;
-                                            color: white; font-size: 0.8rem; white-space: nowrap;">
-                                  ₹{row['revenue']:,.2f}
-                                </div>
-                              </div>
-                            </div>
-                            """,
-                            unsafe_allow_html=True,
-                        )
+                    st.plotly_chart(build_revenue_by_category_chart(by_category), use_container_width=True)
 
 with demo_tab:
     st.caption(
