@@ -176,15 +176,20 @@ if not st.session_state.get("entered_app", False):
     render_homepage()
     st.stop()
 
-header_left, header_home, header_refresh = st.columns([10, 1, 1])
+header_left, header_home, header_refresh = st.columns([8, 1, 1])
 with header_left:
     st.markdown(f"<h2 style='margin-bottom:0;'>{APP_NAME}</h2>", unsafe_allow_html=True)
 with header_home:
-    if st.button("\U0001F3E0", help="Back to homepage", use_container_width=True):
+    # No use_container_width here on purpose - forcing these two small
+    # icon buttons to stretch or shrink to fit a narrow column is exactly
+    # what clipped them on a real screen; left at their natural size, the
+    # column just needs to be wide enough to hold them, not the other way
+    # around.
+    if st.button("\U0001F3E0", help="Back to homepage"):
         st.session_state["entered_app"] = False
         st.rerun()
 with header_refresh:
-    if st.button("\U0001F504", help="Refresh", use_container_width=True):
+    if st.button("\U0001F504", help="Refresh"):
         st.rerun()
 
 df = load_audit_log(DB_PATH)
